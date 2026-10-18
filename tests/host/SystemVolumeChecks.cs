@@ -88,12 +88,31 @@ internal static class SystemVolumeChecks
         Reject(() => windows.Apply("up"), "volume_unknown", check, "native set failure is uncertain and not retried");
         endpoint.FailWrite = false; endpoint.Levels = [.5f, .7f]; endpoint.Mutes = [false, false]; endpoint.FailAtWrite = endpoint.Writes + 2;
         Reject(() => windows.Apply("down"), "volume_unknown", check, "partial multi-channel change never rolls back");
-        check(Math.Abs(endpoint.Levels[0] - .45f) < .00001f && endpoint.Levels[1] == .7f, "partial channel failure does not replay earlier channel");
+        check(Math.Abs(endpoint.Levels[0] - (.5f / .7f * .65f)) < .00001f && endpoint.Levels[1] == .7f, "partial channel failure does not replay earlier channel");
         var replacement = new Endpoint { Levels = [.2f] }; var useReplacement = false;
         var changed = new WindowsSystemVolume(() => useReplacement ? replacement : endpoint);
         check(changed.Available, "initial default output is probed");
         useReplacement = true; changed.Apply("up");
         check(Math.Abs(replacement.Levels[0] - .25f) < .00001f, "each new action resolves the current default output");
+        foreach (var (levels, command, expected) in new (float[], string, float[])[]
+        {
+            ([.5f, .25f], "up", [.55f, .275f]),
+            ([.5f, .25f], "down", [.45f, .225f]),
+            ([.5f, 0], "up", [.55f, 0]),
+            ([0, .5f], "down", [0, .45f]),
+            ([.98f, .49f], "up", [1, .5f]),
+            ([.02f, .01f], "down", [0, 0]),
+            ([0, 0], "up", [.05f, .05f]),
+            ([0, 0], "down", [0, 0]),
+            ([1, .5f], "up", [1, .5f])
+        })
+        {
+            var channels = new Endpoint { Levels = [.. levels], Mutes = [false, false] };
+            new EndpointSystemVolume(() => channels).Apply(command);
+            check(channels.Levels.Zip(expected).All(pair => Math.Abs(pair.First - pair.Second) < .00001f),
+                "channel volume scales relative balance at zero, ceiling and lower boundary");
+            check(!channels.Mutes[0] && !channels.Mutes[1], "level adjustment never changes mute state");
+        }
     }
 
     private static void MacChecks(Action<bool, string> check)
@@ -106,7 +125,11 @@ internal static class SystemVolumeChecks
         api.Master = false; api.Levels = new() { [1] = .2f, [2] = .6f }; api.Mutes = new() { [1] = false, [2] = false };
         api.Writes.Clear(); mac.Apply("up");
         check(api.Writes.Select(value => value.Element).SequenceEqual([1u, 2u]) &&
-            Math.Abs(api.Levels[2] - api.Levels[1] - .4f) < .00001f, "Mac channel controls retain balance rather than flatten speakers");
+            Math.Abs(api.Levels[2] - .65f) < .00001f && Math.Abs(api.Levels[2] / api.Levels[1] - 3) < .00001f,
+            "Mac channel controls retain relative balance rather than absolute difference");
+        api.Levels = new() { [1] = .5f, [2] = 0 }; api.Writes.Clear(); mac.Apply("up");
+        check(Math.Abs(api.Levels[1] - .55f) < .00001f && api.Levels[2] == 0 && api.Writes.Count == 1,
+            "Mac preserves a deliberately silent channel without writing it");
         mac.Apply("mute"); check(api.Mutes.Values.All(value => value), "Mac channel mute affects every output channel");
         api.Unsupported = true;
         check(!mac.Available, "Mac fixed-volume or missing mute output does not advertise support");

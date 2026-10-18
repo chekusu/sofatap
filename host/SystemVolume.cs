@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Numerics;
 
 namespace SofaTap;
 
@@ -20,6 +21,20 @@ internal static class SystemVolume
     {
         if (command is not ("up" or "down" or "mute"))
             throw new InputInjectionException("volume_unsupported: Unsupported volume command.");
+    }
+
+    internal static T[] AdjustLevels<T>(T[] levels, bool increase) where T : struct, IFloatingPoint<T>
+    {
+        var peak = levels.Max();
+        var step = T.CreateChecked(.05m);
+        var targetPeak = T.Clamp(peak + (increase ? step : -step), T.Zero, T.One);
+        if (targetPeak == peak) return [.. levels];
+        // Match virtual main-volume semantics: preserve relative channel balance,
+        // including deliberately silent channels, when changing the common level.
+        // All-zero output has no recoverable ratio; increasing starts all channels
+        // at 5%, while decreasing zero remains a no-op.
+        return levels.Select(level => peak == T.Zero ? targetPeak
+            : T.Clamp(level / peak * targetPeak, T.Zero, T.One)).ToArray();
     }
 }
 
@@ -78,9 +93,10 @@ internal sealed class EndpointSystemVolume(Func<ISystemVolumeEndpoint> open) : I
                 }
                 else
                 {
+                    var targets = SystemVolume.AdjustLevels(levels, command == "up");
                     for (var index = 0; index < levels.Length; index++)
                     {
-                        var target = Math.Clamp(levels[index] + (command == "up" ? .05f : -.05f), 0, 1);
+                        var target = targets[index];
                         if (target == levels[index]) continue;
                         writeAttempted = true;
                         endpoint.SetLevel(index, target);

@@ -18,7 +18,8 @@ internal static class LinuxVolumeChecks
         {
             ("0.50", "up", "0.55"), ("0.50", "down", "0.45"),
             ("0.98", "up", "1"), ("0.03", "down", "0"),
-            ("1.50", "down", "1"), ("1.50", "up", "1"), ("0.00", "down", "0")
+            ("1.50", "down", "1"), ("1.50", "up", "1"),
+            ("0.00", "up", "0.05"), ("0.00", "down", "0")
         })
         {
             var runner = new FakeRunner(check,
@@ -46,10 +47,23 @@ internal static class LinuxVolumeChecks
         pulseProbe.Done();
         foreach (var (left, right, command, targetLeft, targetRight) in new[]
         {
-            (32768u, 16384u, "up", "36045", "19661"),
-            (65000u, 1000u, "up", "65536", "4277"),
-            (65000u, 1000u, "down", "61723", "0"),
-            (98304u, 65536u, "down", "65536", "62259")
+            // Preserve a 2:1 balance for ordinary up/down, rounded once to native units.
+            (32768u, 16384u, "up", "36045", "18022"),
+            (32768u, 16384u, "down", "29491", "14746"),
+            // Clamping the peak scales every channel rather than clamping independently.
+            (65000u, 1000u, "up", "65536", "1008"),
+            (65000u, 1000u, "down", "61723", "950"),
+            (98304u, 65536u, "down", "65536", "43691"),
+            (65536u, 32768u, "up", "65536", "32768"),
+            (65536u, 32768u, "down", "62259", "31130"),
+            // An existing zero channel remains silent while another channel is nonzero.
+            (32768u, 0u, "up", "36045", "0"),
+            (0u, 32768u, "down", "0", "29491"),
+            // All-zero outputs start equally at 5%; a peak below one step decreases to zero.
+            (0u, 0u, "up", "3277", "3277"),
+            (0u, 0u, "down", "0", "0"),
+            (1000u, 500u, "up", "4277", "2138"),
+            (1000u, 500u, "down", "0", "0")
         })
         {
             var runner = new FakeRunner(check,

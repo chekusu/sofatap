@@ -40,10 +40,9 @@ public sealed class LinuxSystemVolume : ISystemVolume
                 arguments = [wirePlumber ? "set-mute" : "set-sink-mute", sink!, "toggle"];
             else
             {
-                var delta = command == "up" ? .05m : -.05m;
                 // Absolute values make the ceiling apply even when an existing level exceeds 100%.
-                // PulseAudio's channel list preserves separate channel levels instead of flattening them.
-                var values = levels!.Select(level => Math.Clamp(level + delta, 0m, 1m));
+                // Scale PulseAudio channels by the same factor to preserve balance and silent channels.
+                var values = SystemVolume.AdjustLevels(levels!, command == "up");
                 arguments = wirePlumber
                     ? ["set-volume", sink!, values.Single().ToString("0.#####", CultureInfo.InvariantCulture)]
                     : ["set-sink-volume", sink!, .. values.Select(value =>

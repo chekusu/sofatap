@@ -4,7 +4,7 @@ Development implementation for [issue #11](https://github.com/chekusu/sofatap/is
 
 ## Behavior
 
-- The computer remote's speaker button opens **Computer volume**: volume down, volume up, and toggle mute for the default playback output. Each volume tap changes the scalar by 5 percentage points within 0–100%; it preserves mute state. Toggle mute is a separate operation. The phone does not display an invented percentage or mute indicator.
+- The computer remote's speaker button opens **Computer volume**: volume down, volume up, and toggle mute for the default playback output. Each volume tap changes the master level (or peak channel level) by 5 percentage points within 0–100%; it preserves mute state. Channel-based outputs scale proportionally, preserving balance and silent channels. Increasing an all-zero output starts all channels at 5%. Toggle mute is a separate operation. The phone does not display an invented percentage or mute indicator.
 - Windows uses `IAudioEndpointVolume` on the default multimedia render endpoint. macOS uses writable CoreAudio master controls, falling back to the output's writable channels. Outputs without writable volume and mute controls, including some digital outputs, report unavailable. Neither implementation synthesizes keyboard events or targets the foreground app.
 - Linux uses the existing audio session through system-installed `wpctl` (WirePlumber/PipeWire) or `pactl` (PulseAudio or its PipeWire compatibility server). No shell or user-provided command is executed. Missing tools, unavailable audio, malformed replies, and failed writes are surfaced; a failed write never falls back to a second backend.
 - **Gesture settings → Pointer speed** saves a computer-only multiplier from 0.25× to 3×, default 1×. It scales remote pointer movement, including drag movement, before the existing bounded motion queue. Scrolling keeps its existing units. The computer OS mouse preference is unchanged. Presets and reset restore 1×; old preference data loads as 1×. TV profiles always remain 1×.
@@ -24,7 +24,7 @@ The regression suites use recording transports, fake audio endpoints and fixed-c
 
 - `bash ios/scripts/test-desktop-controls.sh`: phone capability gating, one command in flight, rejected/uncertain ACKs, actual JSON serialization, timeout/reconnect without replay, stale completion isolation, motion scaling/bounds, scroll independence and drag-tail order.
 - `bash ios/scripts/test-custom-gestures.sh`: preference migration, persistence, malformed values, finite bounds, TV isolation, reset and existing gesture behavior.
-- `tests/ReceiverStateTests.swift`: valid/invalid capability versions, legacy metadata and explicit revocation.
+- `tests/ReceiverStateTests.swift`: valid/invalid capability versions, legacy metadata, explicit revocation and focus revisions deferred across the volume modal, foreground changes and drag completion.
 - Existing drag release, live-text, explicit-text and pairing-attempt suites cover interaction regressions.
 - `python3 ios/scripts/check-localizations.py`: all 12 existing locales, keys, format placeholders and Swift string references.
 - `bash ios/scripts/build-manual.sh device`: complete unprovisioned iPhone/iPad app compilation; no installation or upload.

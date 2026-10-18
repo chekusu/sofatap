@@ -4,6 +4,21 @@ import CoreFoundation
 enum RemoteTextFocus: String { case unknown, other, editable, protected }
 enum SystemVolumeCommand: String, CaseIterable { case down, mute, up }
 
+/// Keep focus revisions pending while a modal, background state or drag blocks
+/// interaction, so dismissal handles the latest focus rather than losing it.
+struct RemoteTextFocusPolicy {
+    private(set) var handledRevision: Int?
+    mutating func reset() { handledRevision = nil }
+    mutating func next(revision: Int, focus: RemoteTextFocus, interactionAvailable: Bool,
+                       dragging: Bool, speechBusy: Bool) -> RemoteTextFocus? {
+        guard interactionAvailable, handledRevision != revision else { return nil }
+        if focus == .editable && dragging { return nil }
+        handledRevision = revision
+        if focus == .editable && speechBusy { return nil }
+        return focus
+    }
+}
+
 /// Additive protocol-v1 metadata. Older receivers omit it; unavailable never implies dry-run.
 struct ReceiverState: Equatable {
     enum Platform: String { case windows, macos, linux, unknown }

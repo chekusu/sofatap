@@ -53,7 +53,7 @@ struct RemoteView: View {
     @State private var clearAlert = false
     @State private var composerVisible = false
     @State private var keyboardFocused = false
-    @State private var handledFocusRevision: Int?
+    @State private var remoteFocus = RemoteTextFocusPolicy()
     @State private var speechBaseDraft = ""
     @State private var speechBaseSnapshot: LiveTextSnapshot?
     @State private var speechRequest: UUID?
@@ -77,10 +77,13 @@ struct RemoteView: View {
     }
     private var tvNavigationSelected: Bool { androidTVSelected && tvMode == .navigation }
     private var currentStatusTitle: String { androidTVSelected ? androidTV.title : televisionSelected ? tv.title : model.statusTitle }
-    private var interfaceAvailable: Bool {
+    private var inputSessionAvailable: Bool {
         scenePhase == .active && !pairingSheet && !guideSheet && !gestureSettingsSheet && !volumeSheet &&
-        !tvRemoteSetupSheet && !tvDirectionSheet && !showingSpeechError && !resendAlert && !clearAlert
+        !tvRemoteSetupSheet && !showingSpeechError && !resendAlert && !clearAlert
     }
+    // The direction sheet contains TV controls; keep its session available while
+    // disabling the touch surface behind it. Other modals block both paths.
+    private var interfaceAvailable: Bool { inputSessionAvailable && !tvDirectionSheet }
     private var inputEnabled: Bool {
         (androidTVSelected ? androidTV.canControl : televisionSelected ? tv.canControl : model.canControl) && interfaceAvailable
     }
@@ -238,7 +241,7 @@ struct RemoteView: View {
             // Covers explicit computer pairing links delivered by the OS.
             stopInteraction()
             composerVisible = false
-            handledFocusRevision = nil
+            remoteFocus.reset()
             if enabled { tv.disconnect(); androidTV.setTargetSelected(false) }
         }
         .onChange(of: androidTV.acceptedInputFeedback) { _, _ in
@@ -286,7 +289,7 @@ struct RemoteView: View {
         .onChange(of: model.controlAvailable) { _, available in
             // A pending drag release blocks new input without disconnecting or
             // stopping dictation. Only session/permission loss resets UI state.
-            if !available && !televisionSelected { handledFocusRevision = nil; stopInteraction() }
+            if !available && !televisionSelected { remoteFocus.reset(); stopInteraction() }
         }
     }
 
@@ -910,16 +913,11 @@ struct RemoteView: View {
         }
     }
     private func applyRemoteFocus() {
-        guard !televisionSelected, model.canControl, scenePhase == .active, !pairingSheet, !guideSheet, !gestureSettingsSheet, !showingSpeechError,
-              !resendAlert, !clearAlert,
-              handledFocusRevision != model.focusRevision else { return }
-        // A desktop field may become focused while the user is selecting text.
-        // Wait for mouse-up before opening a keyboard and resizing the pad.
-        if model.remoteTextFocus == .editable && model.dragging { return }
-        handledFocusRevision = model.focusRevision
-        switch model.remoteTextFocus {
+        guard let focus = remoteFocus.next(revision: model.focusRevision, focus: model.remoteTextFocus,
+                                          interactionAvailable: !televisionSelected && model.canControl && interfaceAvailable,
+                                          dragging: model.dragging, speechBusy: speechBusy) else { return }
+        switch focus {
         case .editable:
-            guard !speechBusy else { return }
             interruptTouch()
             composerVisible = true
             keyboardFocused = true
@@ -974,12 +972,11 @@ struct RemoteView: View {
         androidTV.setTargetSelected(false)
         androidSelected = false
         composerVisible = false
-        handledFocusRevision = nil
+        remoteFocus.reset()
         model.setDesktopControlEnabled(true, reconnect: reconnect)
     }
     private func resumeCurrentInput() {
-        guard scenePhase == .active, !pairingSheet, !guideSheet, !gestureSettingsSheet,
-              !tvRemoteSetupSheet, !showingSpeechError, !resendAlert, !clearAlert else { return }
+        guard inputSessionAvailable else { return }
         if androidTVSelected { androidTV.resumeInput() }
         else if televisionSelected { tv.resumeInput() }
         else { applyRemoteFocus() }
