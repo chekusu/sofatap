@@ -452,3 +452,18 @@
 "电视快捷操作" = "Controles rápidos del televisor";
 "左右滑动切换操作" = "Desliza a izquierda o derecha para cambiar de controles";
 "操作页 %1$d，共 %2$d 页" = "Página de controles %1$d de %2$d";
+
+/* Desktop pointer speed and system volume controls. */
+"指针速度" = "Velocidad del puntero";
+"%@ 倍" = "%@ veces";
+"调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。" = "Ajusta cuánto se mueve el puntero al usar el teléfono como mando. No cambia los ajustes del ratón del ordenador.";
+"这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。" = "Esto sustituye los ajustes de gestos e intervalos del ordenador y restablece la velocidad predeterminada del puntero.";
+"电脑系统音量" = "Volumen del ordenador";
+"音量减" = "Bajar volumen";
+"音量加" = "Subir volumen";
+"静音切换" = "Activar o desactivar silencio";
+"调节电脑默认输出设备的音量。" = "Ajusta el volumen del dispositivo de salida predeterminado del ordenador.";
+"当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。" = "Este receptor o dispositivo de salida no permite controlar el volumen. Actualiza el receptor del ordenador o elige otro dispositivo de salida.";
+"连接电脑后即可调节系统音量。" = "Conéctate a un ordenador para ajustar su volumen.";
+"音量操作未确认，请查看电脑音量后再操作。" = "No se ha confirmado el cambio de volumen. Comprueba el volumen del ordenador antes de intentarlo de nuevo.";
+"无法调节系统音量，请检查电脑的输出设备和接收器。" = "No se puede ajustar el volumen. Comprueba el dispositivo de salida y el receptor del ordenador.";

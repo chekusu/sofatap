@@ -17,6 +17,8 @@ Sofatap is an open-source remote by [chekusu](https://github.com/chekusu). Turn 
 
 **Receiver update controls:** [Android/Google TV 0.2.0 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.0-beta.1) is published with native update checks and default automatic downloads; installation still requires confirmation on the TV. Desktop 0.8.0 beta.1 is awaiting release, so desktop downloads remain at 0.7.3 beta.1. Earlier receivers need one manual upgrade to acquire the updater. See [update behavior and limits](docs/RECEIVER-UPDATES.md) and the [Android release verification](docs/verification/android-tv-release-0.2.0-2026-10-17.md).
 
+**Desktop controls in development (unreleased):** the computer remote adds default-output volume down/up and mute toggle, plus a saved 0.25–3× pointer-speed setting. Volume requires an updated receiver with writable system-audio controls; TV controls are unchanged. See [behavior and validation limits](docs/verification/desktop-controls-2026-10-18.md).
+
 ## Watch the film
 
 [![Watch the Sofatap film: an iPhone controls the computer on the TV with gestures, keyboard input and voice dictation](https://sofatap.app/media/sofatap-demo-poster-en.jpg)](https://sofatap.app/#video)

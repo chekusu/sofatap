@@ -452,3 +452,18 @@
 "电视快捷操作" = "Kontrol cepat TV";
 "左右滑动切换操作" = "Usap ke kiri atau kanan untuk mengganti kontrol";
 "操作页 %1$d，共 %2$d 页" = "Halaman kontrol %1$d dari %2$d";
+
+/* Desktop pointer speed and system volume controls. */
+"指针速度" = "Kecepatan penunjuk";
+"%@ 倍" = "%@ kali";
+"调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。" = "Mengatur jarak gerak penunjuk saat menggunakan ponsel sebagai pengendali jarak jauh. Pengaturan mouse komputer tidak berubah.";
+"这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。" = "Ini akan mengganti pengaturan gestur dan waktu untuk komputer serta mengembalikan kecepatan penunjuk ke nilai bawaan.";
+"电脑系统音量" = "Volume komputer";
+"音量减" = "Kecilkan volume";
+"音量加" = "Besarkan volume";
+"静音切换" = "Aktifkan atau nonaktifkan bisu";
+"调节电脑默认输出设备的音量。" = "Atur volume perangkat keluaran bawaan komputer.";
+"当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。" = "Kontrol volume tidak tersedia untuk penerima atau perangkat keluaran ini. Perbarui penerima komputer atau pilih perangkat keluaran lain.";
+"连接电脑后即可调节系统音量。" = "Hubungkan ke komputer untuk mengatur volumenya.";
+"音量操作未确认，请查看电脑音量后再操作。" = "Perubahan volume belum dikonfirmasi. Periksa volume komputer sebelum mencoba lagi.";
+"无法调节系统音量，请检查电脑的输出设备和接收器。" = "Tidak dapat mengatur volume. Periksa perangkat keluaran dan penerima komputer.";

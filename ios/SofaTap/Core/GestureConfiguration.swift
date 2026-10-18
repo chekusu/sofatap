@@ -23,12 +23,16 @@ enum GesturePreset: String, Codable, CaseIterable {
 struct GestureConfiguration: Codable, Equatable {
     static let defaultHoldDuration = 0.3
     static let defaultDoubleTapInterval = 0.28
+    static let defaultPointerSpeed = 1.0
     static let holdDurationRange = 0.2...1.2
     static let doubleTapIntervalRange = 0.15...0.5
+    static let pointerSpeedRange = 0.25...3.0
 
     var bindings: [GestureID: GestureAction]
     var holdDuration: Double = defaultHoldDuration
     var doubleTapInterval: Double = defaultDoubleTapInterval
+    /// Multiplies desktop remote movement only; never changes the computer's OS preferences.
+    var pointerSpeed: Double = defaultPointerSpeed
     var naturalScrolling = true
     private(set) var target: GestureTarget
 
@@ -88,6 +92,9 @@ struct GestureConfiguration: Codable, Equatable {
         })
         copy.holdDuration = Self.clamp(holdDuration, to: Self.holdDurationRange, fallback: Self.defaultHoldDuration)
         copy.doubleTapInterval = Self.clamp(doubleTapInterval, to: Self.doubleTapIntervalRange, fallback: Self.defaultDoubleTapInterval)
+        copy.pointerSpeed = target == .computer
+            ? Self.clamp(pointerSpeed, to: Self.pointerSpeedRange, fallback: Self.defaultPointerSpeed)
+            : Self.defaultPointerSpeed
         return copy
     }
 
@@ -111,7 +118,7 @@ struct GestureConfiguration: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case bindings, holdDuration, doubleTapInterval, naturalScrolling, target
+        case bindings, holdDuration, doubleTapInterval, pointerSpeed, naturalScrolling, target
     }
 
     private struct BindingKey: CodingKey {
@@ -127,6 +134,7 @@ struct GestureConfiguration: Codable, Equatable {
         self.init(target: target)
         holdDuration = (try? container.decode(Double.self, forKey: .holdDuration)) ?? Self.defaultHoldDuration
         doubleTapInterval = (try? container.decode(Double.self, forKey: .doubleTapInterval)) ?? Self.defaultDoubleTapInterval
+        pointerSpeed = (try? container.decode(Double.self, forKey: .pointerSpeed)) ?? Self.defaultPointerSpeed
         naturalScrolling = (try? container.decode(Bool.self, forKey: .naturalScrolling)) ?? true
         if let values = try? container.nestedContainer(keyedBy: BindingKey.self, forKey: .bindings) {
             for key in values.allKeys {
@@ -148,6 +156,7 @@ struct GestureConfiguration: Codable, Equatable {
         try container.encode(safe.target, forKey: .target)
         try container.encode(safe.holdDuration, forKey: .holdDuration)
         try container.encode(safe.doubleTapInterval, forKey: .doubleTapInterval)
+        try container.encode(safe.pointerSpeed, forKey: .pointerSpeed)
         try container.encode(safe.naturalScrolling, forKey: .naturalScrolling)
         let rawBindings = Dictionary(uniqueKeysWithValues: safe.bindings.map { ($0.key.rawValue, $0.value.rawValue) })
         try container.encode(rawBindings, forKey: .bindings)

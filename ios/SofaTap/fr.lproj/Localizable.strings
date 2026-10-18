@@ -452,3 +452,18 @@
 "电视快捷操作" = "Commandes rapides du téléviseur";
 "左右滑动切换操作" = "Balayez vers la gauche ou la droite pour changer de commandes";
 "操作页 %1$d，共 %2$d 页" = "Page de commandes %1$d sur %2$d";
+
+/* Desktop pointer speed and system volume controls. */
+"指针速度" = "Vitesse du pointeur";
+"%@ 倍" = "%@ fois";
+"调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。" = "Ajuste la distance parcourue par le pointeur lorsque vous utilisez le téléphone comme télécommande. Les réglages de la souris de l’ordinateur restent inchangés.";
+"这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。" = "Cette action remplace les réglages des gestes et des délais pour l’ordinateur, et rétablit la vitesse par défaut du pointeur.";
+"电脑系统音量" = "Volume de l’ordinateur";
+"音量减" = "Baisser le volume";
+"音量加" = "Augmenter le volume";
+"静音切换" = "Activer ou désactiver le son";
+"调节电脑默认输出设备的音量。" = "Réglez le volume du périphérique de sortie par défaut de l’ordinateur.";
+"当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。" = "Le réglage du volume n’est pas disponible pour ce récepteur ou ce périphérique de sortie. Mettez à jour le récepteur de l’ordinateur ou choisissez un autre périphérique de sortie.";
+"连接电脑后即可调节系统音量。" = "Connectez-vous à un ordinateur pour régler son volume.";
+"音量操作未确认，请查看电脑音量后再操作。" = "Le changement de volume n’a pas été confirmé. Vérifiez le volume de l’ordinateur avant de réessayer.";
+"无法调节系统音量，请检查电脑的输出设备和接收器。" = "Impossible de régler le volume. Vérifiez le périphérique de sortie et le récepteur de l’ordinateur.";

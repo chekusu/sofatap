@@ -22,6 +22,7 @@ struct GestureConfigurationTests {
         check("holding the second tap still starts a drag", legacy.action(for: .doubleTapHold) == .drag)
         check("new tap gestures do not surprise existing users", legacy.action(for: .twoFingerTap) == .none && legacy.action(for: .threeFingerTap) == .none)
         check("legacy pointer and natural scrolling defaults are preserved", legacy.action(for: .oneFingerMove) == .movePointer && legacy.action(for: .twoFingerMove) == .scroll && legacy.naturalScrolling)
+        check("new desktop installation preserves existing pointer distance", legacy.pointerSpeed == 1.0)
         let tv = GestureConfiguration(target: .television)
         check("TV defaults never introduce synthetic double click or hold", tv.action(for: .leftDoubleTap) == .none && tv.action(for: .rightDoubleTap) == .none && tv.action(for: .longPress) == .none && tv.action(for: .doubleTapHold) == .none)
         check("TV defaults preserve supported pointer click and scroll", tv.action(for: .singleTap) == .leftClick && tv.action(for: .oneFingerMove) == .movePointer && tv.action(for: .twoFingerMove) == .scroll)
@@ -41,10 +42,11 @@ struct GestureConfigurationTests {
         custom.setAction(.toggleDictation, for: .threeFingerTap)
         custom.holdDuration = 0.75
         custom.doubleTapInterval = 0.42
+        custom.pointerSpeed = 2.25
         custom.naturalScrolling = false
         check("user can swap continuous pointer and scroll gestures", custom.action(for: .oneFingerMove) == .scroll && custom.action(for: .twoFingerMove) == .movePointer)
         let roundTrip = try JSONDecoder().decode(GestureConfiguration.self, from: JSONEncoder().encode(custom))
-        check("custom actions timing and scroll direction survive serialization", roundTrip == custom)
+        check("custom actions timing pointer speed and scroll direction survive serialization", roundTrip == custom)
         custom.setAction(.drag, for: .singleTap)
         check("single tap cannot leave a mouse button held", custom.action(for: .singleTap) == .none)
         custom.setAction(.leftClick, for: .twoFingerMove)
@@ -57,6 +59,7 @@ struct GestureConfigurationTests {
         let targetFiltered = pressMenu.sanitized(for: .television)
         check("desktop mappings cannot leak right click drag or keyboard into TV", targetFiltered.action(for: .longPress) == .none && targetFiltered.action(for: .doubleTapHold) == .none && targetFiltered.action(for: .threeFingerTap) == .none)
         check("supported confirm survives target sanitation", targetFiltered.action(for: .twoFingerTap) == .confirm)
+        check("computer pointer speed never carries over to a TV profile", roundTrip.sanitized(for: .television).pointerSpeed == 1.0)
         for preset in GesturePreset.allCases {
             let tvPreset = GestureConfiguration(preset: preset, target: .television)
             let forbidden: Set<GestureAction> = [.rightClick, .doubleLeftClick, .doubleRightClick, .drag, .toggleKeyboard, .toggleDictation]
@@ -81,12 +84,29 @@ struct GestureConfigurationTests {
         check("finite timing values are clamped to usable bounds", extreme.holdDuration == 0.2 && extreme.doubleTapInterval == 0.5)
         let malformedTiming = try decode(#"{"holdDuration":"NaN","doubleTapInterval":null,"naturalScrolling":"false"}"#)
         check("malformed timing and direction use safe defaults", malformedTiming.holdDuration == 0.3 && malformedTiming.doubleTapInterval == 0.28 && malformedTiming.naturalScrolling)
+        let legacySettings = try decode(#"{"holdDuration":0.75,"doubleTapInterval":0.42,"naturalScrolling":false,"bindings":{"twoFingerTap":"rightClick"}}"#)
+        check("older settings gain default speed without losing existing choices", legacySettings.pointerSpeed == 1.0 && legacySettings.holdDuration == 0.75 && legacySettings.doubleTapInterval == 0.42 && !legacySettings.naturalScrolling && legacySettings.action(for: .twoFingerTap) == .rightClick)
+        let slow = try decode(#"{"pointerSpeed":-100}"#)
+        let fast = try decode(#"{"pointerSpeed":100}"#)
+        check("out of range saved speeds remain usable", slow.pointerSpeed == 0.25 && fast.pointerSpeed == 3.0)
+        for invalid in [#""NaN""#, "null", "true", "{}"] {
+            let invalidSpeed = try decode("{\"pointerSpeed\":\(invalid)}")
+            check("malformed saved speed falls back to previous behavior: \(invalid)", invalidSpeed.pointerSpeed == 1.0)
+        }
+        let tvSpeed = try decode(#"{"target":"television","pointerSpeed":3}"#)
+        check("persisted TV speed cannot alter TV pointer input", tvSpeed.pointerSpeed == 1.0)
         var nonFinite = legacy
         nonFinite.holdDuration = .nan
         nonFinite.doubleTapInterval = .infinity
         let safeNonFinite = nonFinite.sanitized(for: .computer)
         check("nonfinite values do not leave a stuck gesture timer", safeNonFinite.holdDuration == 0.3 && safeNonFinite.doubleTapInterval == 0.28)
         check("save can sanitize runtime nonfinite values", (try? JSONEncoder().encode(nonFinite)) != nil)
+        for speed in [Double.nan, .infinity, -.infinity] {
+            nonFinite.pointerSpeed = speed
+            let safe = nonFinite.sanitized(for: .computer)
+            let saved = try JSONDecoder().decode(GestureConfiguration.self, from: JSONEncoder().encode(nonFinite))
+            check("nonfinite runtime speed cannot disable or reverse pointer input", safe.pointerSpeed == 1.0 && saved.pointerSpeed == 1.0)
+        }
 
         var preferences = GesturePreferences()
         preferences[.computer] = roundTrip
@@ -95,14 +115,15 @@ struct GestureConfigurationTests {
         check("TV profile edit does not change desktop habits", preferences.computer == desktopBeforeTVEdit)
         let tvBeforeReset = preferences.television
         preferences.reset(preset: .trackpad, for: .computer)
-        check("preset reset restores timing direction and gestures together", preferences.computer == trackpad)
+        check("preset reset restores timing speed direction and gestures together", preferences.computer == trackpad && preferences.computer.pointerSpeed == 1.0)
         check("resetting desktop preset never resets TV", preferences.television == tvBeforeReset)
         preferences.reset(for: .television)
         check("reset to TV defaults does not copy desktop bindings", preferences.television == tv && preferences.computer == trackpad)
         let partialPreferences = try decodePreferences(#"{"schemaVersion":1,"computer":"damaged","television":{"target":"television","bindings":{"twoFingerTap":"home"}}}"#)
         check("corrupt desktop profile does not discard intact TV profile", partialPreferences.computer == legacy && partialPreferences.television.action(for: .twoFingerTap) == .home)
-        let forgedTarget = try decodePreferences(#"{"schemaVersion":1,"television":{"target":"computer","bindings":{"singleTap":"rightClick","threeFingerTap":"back"}}}"#)
+        let forgedTarget = try decodePreferences(#"{"schemaVersion":1,"television":{"target":"computer","pointerSpeed":2.5,"bindings":{"singleTap":"rightClick","threeFingerTap":"back"}}}"#)
         check("profile family is authoritative over persisted target field", forgedTarget.television.target == .television && forgedTarget.television.action(for: .singleTap) == .none && forgedTarget.television.action(for: .threeFingerTap) == .back)
+        check("forged TV target cannot retain desktop pointer speed", forgedTarget.television.pointerSpeed == 1.0)
         let future = try decodePreferences(#"{"schemaVersion":999,"computer":{"bindings":{"singleTap":"home"}}}"#)
         check("unsupported persistence version does not misinterpret mappings", future == GesturePreferences())
 
@@ -111,8 +132,13 @@ struct GestureConfigurationTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set("kept", forKey: "unrelatedPreference")
         check("missing settings load as existing user behavior", GesturePreferences.load(from: defaults) == GesturePreferences())
+        defaults.set(Data(#"{"schemaVersion":1,"computer":{"holdDuration":0.65,"naturalScrolling":false},"television":{"target":"television","bindings":{"twoFingerTap":"home"}}}"#.utf8), forKey: GesturePreferences.storageKey)
+        let upgraded = GesturePreferences.load(from: defaults)
+        check("existing storage schema upgrades in place with unchanged control feel", upgraded.computer.pointerSpeed == 1.0 && upgraded.computer.holdDuration == 0.65 && !upgraded.computer.naturalScrolling && upgraded.television.action(for: .twoFingerTap) == .home)
+        preferences.computer.pointerSpeed = 2.75
         check("profile save succeeds", preferences.save(to: defaults))
         check("cold reload preserves independent profiles", GesturePreferences.load(from: defaults) == preferences)
+        check("cold reload retains desktop speed without changing TV speed", GesturePreferences.load(from: defaults).computer.pointerSpeed == 2.75 && GesturePreferences.load(from: defaults).television.pointerSpeed == 1.0)
         check("gesture save leaves other application settings alone", defaults.string(forKey: "unrelatedPreference") == "kept")
         let stored = defaults.data(forKey: GesturePreferences.storageKey)!
         let envelope = try JSONSerialization.jsonObject(with: stored) as! [String: Any]

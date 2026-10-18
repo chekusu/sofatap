@@ -452,3 +452,18 @@
 "电视快捷操作" = "Controles rápidos da TV";
 "左右滑动切换操作" = "Deslize para a esquerda ou direita para mudar de controles";
 "操作页 %1$d，共 %2$d 页" = "Página de controles %1$d de %2$d";
+
+/* Desktop pointer speed and system volume controls. */
+"指针速度" = "Velocidade do ponteiro";
+"%@ 倍" = "%@ vezes";
+"调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。" = "Ajusta a distância que o ponteiro percorre ao usar o celular como controle remoto. As configurações do mouse do computador não são alteradas.";
+"这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。" = "Isso substitui as configurações de gestos e intervalos do computador e restaura a velocidade padrão do ponteiro.";
+"电脑系统音量" = "Volume do computador";
+"音量减" = "Diminuir volume";
+"音量加" = "Aumentar volume";
+"静音切换" = "Ativar ou desativar mudo";
+"调节电脑默认输出设备的音量。" = "Ajuste o volume do dispositivo de saída padrão do computador.";
+"当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。" = "O controle de volume não está disponível para este receptor ou dispositivo de saída. Atualize o receptor do computador ou escolha outro dispositivo de saída.";
+"连接电脑后即可调节系统音量。" = "Conecte-se a um computador para ajustar o volume.";
+"音量操作未确认，请查看电脑音量后再操作。" = "A alteração de volume não foi confirmada. Confira o volume do computador antes de tentar novamente.";
+"无法调节系统音量，请检查电脑的输出设备和接收器。" = "Não foi possível ajustar o volume. Verifique o dispositivo de saída e o receptor do computador.";

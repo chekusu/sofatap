@@ -39,6 +39,7 @@ struct RemoteView: View {
     @State private var incomingPairingLink: String?
     @State private var guideSheet = false
     @State private var gestureSettingsSheet = false
+    @State private var volumeSheet = false
     @State private var gestureSettingsTarget = GestureTarget.computer
     @State private var gesturePreferences = GesturePreferences.load(from: .standard)
     @State private var showingSpeechError = false
@@ -77,7 +78,7 @@ struct RemoteView: View {
     private var tvNavigationSelected: Bool { androidTVSelected && tvMode == .navigation }
     private var currentStatusTitle: String { androidTVSelected ? androidTV.title : televisionSelected ? tv.title : model.statusTitle }
     private var interfaceAvailable: Bool {
-        scenePhase == .active && !pairingSheet && !guideSheet && !gestureSettingsSheet &&
+        scenePhase == .active && !pairingSheet && !guideSheet && !gestureSettingsSheet && !volumeSheet &&
         !tvRemoteSetupSheet && !tvDirectionSheet && !showingSpeechError && !resendAlert && !clearAlert
     }
     private var inputEnabled: Bool {
@@ -170,6 +171,10 @@ struct RemoteView: View {
             AndroidTVDirectionButtons(tv: androidTV).presentationDetents([.height(300)]).presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $guideSheet) { RemoteGuideView(configuration: gestureConfiguration, context: guideContext) }
+        .sheet(isPresented: $volumeSheet) {
+            SystemVolumeSheet(model: model)
+                .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: $gestureSettingsSheet) {
             GestureSettingsView(configuration: Binding(
                 get: { gesturePreferences[gestureSettingsTarget] },
@@ -198,6 +203,7 @@ struct RemoteView: View {
     private var connectionEvents: some View {
         presentation
         .onAppear {
+            model.setPointerSpeed(gesturePreferences[.computer].pointerSpeed)
             model.becameActive()
 #if SOFATAP_TV_UI_TESTING
             if model.demo && ProcessInfo.processInfo.arguments.contains("--demo-tv-controls") {
@@ -301,8 +307,13 @@ struct RemoteView: View {
             if shown { stopInteraction() }
             else { resumeCurrentInput() }
         }
+        .onChange(of: volumeSheet) { _, shown in
+            if shown { stopInteraction() }
+            else { resumeCurrentInput() }
+        }
         .onChange(of: gesturePreferences) { _, preferences in
             touchControl.cancel(); tvNavigationControl.cancel(); tvAuxiliaryControl.cancel()
+            model.setPointerSpeed(preferences[.computer].pointerSpeed)
             if !model.demo { _ = preferences.save(to: .standard) }
         }
         .onChange(of: model.pairingError) { _, error in
@@ -676,7 +687,15 @@ struct RemoteView: View {
             .accessibilityValue(dictation.isRecording ? String(localized: "麦克风正在录音") : dictation.state == .finishing ? String(localized: "正在整理听写结果") : "")
             .accessibilityIdentifier("dictationButton")
             Spacer(minLength: 0)
-            Color.clear.frame(width: 48, height: 52).allowsHitTesting(false)
+            Button { volumeSheet = true } label: {
+                Image(systemName: "speaker.wave.2")
+                    .font(.system(size: 20)).frame(width: 48, height: 52)
+                    .contentShape(Rectangle()).foregroundStyle(Palette.mint.opacity(0.65))
+            }
+            .buttonStyle(RemoteIconButtonStyle())
+            .disabled(!interfaceAvailable)
+            .accessibilityLabel(String(localized: "电脑系统音量"))
+            .accessibilityIdentifier("systemVolumeButton")
         }
     }
 
@@ -1010,6 +1029,60 @@ private struct MicrophoneButtonStyle: ButtonStyle {
             .onChange(of: pressed) { _, down in
                 if down { prepareFeedback() }
             }
+    }
+}
+
+private struct SystemVolumeSheet: View {
+    @ObservedObject var model: ControllerModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var unavailableMessage: String? {
+        if model.demo { return String(localized: "界面演示：按钮只展示反馈，没有连接或操作电脑。") }
+        if !model.connected { return String(localized: "连接电脑后即可调节系统音量。") }
+        if !model.inputAvailable { return model.receiverState.unavailableMessage }
+        if !model.receiverState.supportsSystemVolume {
+            return String(localized: "当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。")
+        }
+        return nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    volumeButton(.down, title: String(localized: "音量减"), symbol: "speaker.wave.1")
+                    volumeButton(.up, title: String(localized: "音量加"), symbol: "speaker.wave.3")
+                    volumeButton(.mute, title: String(localized: "静音切换"), symbol: "speaker.slash")
+                } header: {
+                    Text(model.computerName)
+                } footer: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(String(localized: "调节电脑默认输出设备的音量。"))
+                        if let message = unavailableMessage ?? model.volumeFeedback { Text(message) }
+                        if model.volumeBusy { ProgressView() }
+                    }
+                }
+                .listRowBackground(Palette.panel)
+            }
+            .scrollContentBackground(.hidden).background(Palette.background)
+            .navigationTitle(String(localized: "电脑系统音量"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "完成")) { dismiss() }
+                }
+            }
+        }
+        .tint(Palette.mint).preferredColorScheme(.dark)
+    }
+
+    private func volumeButton(_ command: SystemVolumeCommand, title: String, symbol: String) -> some View {
+        Button { model.changeSystemVolume(command) } label: {
+            Label(title, systemImage: symbol).frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        }
+        .disabled(!model.canChangeSystemVolume || scenePhase != .active)
+        .accessibilityIdentifier("systemVolume_\(command.rawValue)")
     }
 }
 

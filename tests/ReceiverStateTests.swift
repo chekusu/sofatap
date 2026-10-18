@@ -24,6 +24,18 @@ struct ReceiverStateTests {
         let unknown = ReceiverState.hello(["inputAvailable": true, "inputStatus": "future_state", "platform": "future_os"])!
         check("unknown state fails closed", !unknown.inputAvailable && unknown.platform == .unknown)
         check("missing availability rejected", ReceiverState.hello([:]) == nil)
+        check("legacy hello has no volume capability", !old.supportsSystemVolume)
+        let volume = ReceiverState.hello(["inputAvailable": true, "systemVolume": ["version": 1]])!
+        check("explicit volume v1 is recognized", volume.supportsSystemVolume)
+        for version: Any in [true, 0, 2, 1.5, "1", NSNull()] {
+            check("invalid or unknown volume version is disabled", !ReceiverState.hello(["inputAvailable": true, "systemVolume": ["version": version]])!.supportsSystemVolume)
+        }
+        let ping: [String: Any] = ["inputAvailable": true, "dryRun": false, "inputStatus": "ready"]
+        check("legacy ping preserves negotiated volume support", volume.updating(ping)!.supportsSystemVolume)
+        var revokedVolume = ping; revokedVolume["systemVolume"] = NSNull()
+        check("explicit null revokes support on output removal", !volume.updating(revokedVolume)!.supportsSystemVolume)
+        var availableVolume = ping; availableVolume["systemVolume"] = ["version": 1]
+        check("output change can enable support without reconnect", old.updating(availableVolume)!.supportsSystemVolume)
         let focusBase: [String: Any] = ["platform": "macos", "inputAvailable": true, "dryRun": false, "inputStatus": "ready"]
         func focused(_ value: Any) -> ReceiverState {
             var frame = focusBase; frame["textFocus"] = value

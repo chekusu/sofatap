@@ -11,9 +11,10 @@ namespace SofaTap;
 public sealed record ReceiverOptions(bool DryRun, string DataDirectory, int ControlPort = 53319);
 
 public sealed class ReceiverServer(ReceiverOptions options, Credentials credentials, IInputInjector input, ITextFocusProbe? textFocus = null,
-    Func<ILiveTextEditor>? textEditorFactory = null)
+    Func<ILiveTextEditor>? textEditorFactory = null, ISystemVolume? systemVolume = null)
 {
     private readonly SemaphoreSlim _controller = new(1, 1);
+    private readonly CachedSystemVolume? _volume = options.DryRun || systemVolume is null ? null : new(systemVolume);
     private static readonly JsonSerializerOptions JsonOptions = LiveTextWire.Options;
     private readonly byte[] _token = Encoding.ASCII.GetBytes(credentials.Token);
     private CancellationToken _applicationStopping;
@@ -35,6 +36,7 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10) });
         app.Run(HandleRequest);
         app.Lifetime.ApplicationStopping.Register(input.ReleaseAll);
+        app.Lifetime.ApplicationStopping.Register(() => _volume?.Dispose());
         return app;
     }
     private async Task HandleRequest(HttpContext context)
@@ -68,12 +70,13 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
     // The retired account-password pilot must not be discoverable, even when a
     // legacy enrollment file remains on disk. PIN control needs a separate, verified protocol.
     internal static object CreateHello(string name, string platform, bool dryRun,
-        string status, TextFocusMetadata focus, bool liveTextSupported = false) => new
+        string status, TextFocusMetadata focus, bool liveTextSupported = false, bool systemVolumeSupported = false) => new
     {
         type = "hello", version = 1, name, platform, dryRun,
         inputAvailable = status == "ready", inputStatus = status,
         textFocus = ReceiverDistribution.SupportsTextInspection ? focus : new TextFocusMetadata("unknown", 0),
-        liveText = ReceiverDistribution.SupportsTextInspection && liveTextSupported && !dryRun ? new { version = 1 } : null
+        liveText = ReceiverDistribution.SupportsTextInspection && liveTextSupported && !dryRun ? new { version = 1 } : null,
+        systemVolume = systemVolumeSupported && !dryRun && status == "ready" ? new { version = 1 } : null
     };
 
     private async Task RunController(WebSocket socket, CancellationToken requestAborted)
@@ -87,8 +90,8 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
         using var liveText = ReceiverDistribution.SupportsTextInspection && !options.DryRun && textEditorFactory is not null
             ? new LiveTextSession(textEditorFactory(), () => ReceiverPlatform.StatusCode(input, options.DryRun) == "ready") : null;
         await Send(socket, CreateHello(Environment.MachineName, ReceiverPlatform.Id,
-            options.DryRun, status, Focus(status), liveText is not null), lifetime.Token);
-        var session = new ActionSession(input, liveText: liveText);
+            options.DryRun, status, Focus(status), liveText is not null, VolumeAvailable(status)), lifetime.Token);
+        var session = new ActionSession(input, liveText: liveText, systemVolume: _volume);
         var buffer = new byte[Protocol.MaximumFrameBytes + 1];
         while (socket.State == WebSocketState.Open && !lifetime.IsCancellationRequested)
         {
@@ -132,7 +135,11 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
                     if (currentStatus != "ready") liveText?.End();
                     await Send(socket, new { ack.Type, ack.Id, ack.Ok, ack.Error,
                         inputAvailable = currentStatus == "ready", inputStatus = currentStatus, dryRun = options.DryRun,
-                        textFocus = Focus(currentStatus) }, lifetime.Token);
+                        textFocus = Focus(currentStatus),
+                        // JsonElement null is explicit even with WhenWritingNull: a
+                        // removed/unsupported output must revoke a previous capability.
+                        systemVolume = JsonSerializer.SerializeToElement(VolumeAvailable(currentStatus) ? new { version = 1 } : null)
+                    }, lifetime.Token);
                 }
                 else await Send(socket, ack, lifetime.Token);
             }
@@ -144,6 +151,7 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
             }
         }
     }
+    private bool VolumeAvailable(string status) => status == "ready" && _volume?.Available == true;
     private static async Task Send(WebSocket socket, object message, CancellationToken cancellation)
     {
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellation);

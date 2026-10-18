@@ -35,7 +35,7 @@ try
     using var inputLifetime = input as IDisposable;
     using var textFocus = ReceiverDistribution.CreateTextFocus(dryRun);
     var textEditorFactory = ReceiverDistribution.CreateTextEditorFactory(dryRun);
-    var server = new ReceiverServer(options, credentials, input, textFocus, textEditorFactory);
+    var server = new ReceiverServer(options, credentials, input, textFocus, textEditorFactory, SystemVolume.Create(dryRun));
     await using var app = server.Build();
     try { await NativeDesktopBridge.RunAsync(app, server, dryRun); }
     finally { input.ReleaseAll(); }

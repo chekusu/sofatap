@@ -452,3 +452,18 @@
 "电视快捷操作" = "TV-Schnellsteuerung";
 "左右滑动切换操作" = "Nach links oder rechts wischen, um die Bedienelemente zu wechseln";
 "操作页 %1$d，共 %2$d 页" = "Steuerungsseite %1$d von %2$d";
+
+/* Desktop pointer speed and system volume controls. */
+"指针速度" = "Zeigergeschwindigkeit";
+"%@ 倍" = "%@-fach";
+"调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。" = "Legt fest, wie weit sich der Zeiger bei der Fernsteuerung per Smartphone bewegt. Die Mauseinstellungen des Computers bleiben unverändert.";
+"这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。" = "Dies ersetzt die Gesten- und Zeiteinstellungen für den Computer und setzt die Zeigergeschwindigkeit auf den Standardwert zurück.";
+"电脑系统音量" = "Computerlautstärke";
+"音量减" = "Leiser";
+"音量加" = "Lauter";
+"静音切换" = "Stummschaltung umschalten";
+"调节电脑默认输出设备的音量。" = "Passe die Lautstärke des Standardausgabegeräts deines Computers an.";
+"当前接收器或输出设备不支持音量控制。请更新电脑接收器或切换输出设备。" = "Die Lautstärkeregelung ist für diesen Empfänger oder dieses Ausgabegerät nicht verfügbar. Aktualisiere den Empfänger auf dem Computer oder wähle ein anderes Ausgabegerät.";
+"连接电脑后即可调节系统音量。" = "Verbinde dich mit einem Computer, um seine Lautstärke anzupassen.";
+"音量操作未确认，请查看电脑音量后再操作。" = "Die Lautstärkeänderung wurde nicht bestätigt. Prüfe die Lautstärke am Computer, bevor du es erneut versuchst.";
+"无法调节系统音量，请检查电脑的输出设备和接收器。" = "Die Lautstärke lässt sich nicht anpassen. Prüfe das Ausgabegerät und den Empfänger auf dem Computer.";

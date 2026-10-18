@@ -116,6 +116,8 @@ jobs:
         run: bash ios/scripts/test-draft-editor.sh
       - name: Preserve dictation results without microphone access
         run: bash ios/scripts/test-dictation-transcript.sh
+      - name: Desktop volume lifecycle and pointer speed without real input
+        run: bash ios/scripts/test-desktop-controls.sh
       - name: Finish drag motion before releasing the mouse
         run: bash ios/scripts/test-drag-release.sh
       - name: Synchronize live text and selection without desktop input

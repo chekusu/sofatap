@@ -12,6 +12,14 @@ if (args.Contains("--distribution-only", StringComparer.Ordinal))
     Console.WriteLine($"PASS: {passed} distribution checks (no network or desktop input).");
     return;
 }
+SystemVolumeChecks.Run(Check);
+LinuxVolumeChecks.Run(Check);
+await SystemVolumeWireChecks.Run(Check);
+if (args.Contains("--volume-only", StringComparer.Ordinal))
+{
+    Console.WriteLine($"PASS: {passed} distribution and volume checks (fake audio/input and temporary TLS profiles only).");
+    return;
+}
 PairingUriChecks.Run(Check);
 CredentialPersistenceChecks.Run(Check);
 LinuxInputChecks.Run(Check);

@@ -2,6 +2,7 @@ import Foundation
 import CoreFoundation
 
 enum RemoteTextFocus: String { case unknown, other, editable, protected }
+enum SystemVolumeCommand: String, CaseIterable { case down, mute, up }
 
 /// Additive protocol-v1 metadata. Older receivers omit it; unavailable never implies dry-run.
 struct ReceiverState: Equatable {
@@ -19,6 +20,7 @@ struct ReceiverState: Equatable {
     var focusRevision: Int = 0
     var reportsTextFocus: Bool = false
     var supportsLiveText: Bool = false
+    var supportsSystemVolume: Bool = false
     var commandModifier: String { platform == .macos ? "win" : "ctrl" }
     var unavailableTitle: String {
         switch status {
@@ -59,6 +61,7 @@ struct ReceiverState: Equatable {
               message["dryRun"] is Bool, message["inputStatus"] is String else { return nil }
         var state = Self.make(platform: platform, available: available, message: message)
         if message["liveText"] == nil { state.supportsLiveText = supportsLiveText }
+        if message["systemVolume"] == nil { state.supportsSystemVolume = supportsSystemVolume }
         return state
     }
 
@@ -70,6 +73,8 @@ struct ReceiverState: Equatable {
         var state = ReceiverState(platform: platform, status: status, inputAvailable: canInput, dryRun: dry)
         if let capability = message["liveText"] as? [String: Any],
            LiveTextSnapshot.integer(capability["version"]) == 1 { state.supportsLiveText = true }
+        if let capability = message["systemVolume"] as? [String: Any],
+           LiveTextSnapshot.integer(capability["version"]) == 1 { state.supportsSystemVolume = true }
         if let focus = message["textFocus"] as? [String: Any],
            let raw = focus["state"] as? String, let kind = RemoteTextFocus(rawValue: raw),
            let revision = focus["revision"] as? NSNumber,

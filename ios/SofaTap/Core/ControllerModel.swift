@@ -57,7 +57,9 @@ final class ControllerModel: ObservableObject {
     }
     @Published private(set) var dragging = false
     @Published private(set) var airMoving = false
-    @Published var sensitivity = 1.0
+    @Published private(set) var sensitivity = 1.0
+    @Published private(set) var volumeBusy = false
+    @Published private(set) var volumeFeedback: String?
     let demo: Bool
     let unlock = ComputerUnlockController()
 
@@ -144,9 +146,11 @@ final class ControllerModel: ObservableObject {
         let currentGeneration = generation
         return { [weak self] in self?.commandTimedOut(id: id, generation: currentGeneration) }
     }
-    func testAcknowledgeCommand(_ type: String) {
+    func testAcknowledgeCommand(_ type: String, ok: Bool = true, error: String? = nil) {
         guard let id = pending.first(where: { $0.value.type == type })?.key else { preconditionFailure("No pending command") }
-        _ = handle(["type": "ack", "id": id, "ok": true])
+        var ack: [String: Any] = ["type": "ack", "id": id, "ok": ok]
+        if let error { ack["error"] = error }
+        _ = handle(ack)
     }
     init(testSend: @escaping (String, [String: Any], @escaping (Bool) -> Void) -> Void) {
         demo = false
@@ -167,6 +171,7 @@ final class ControllerModel: ObservableObject {
         restoreDeliveryReceipt()
     }
     func testFlushMovement() { flushMovement() }
+    func testReceiveState(_ state: ReceiverState) { updateReceiverState(state) }
     func testReceiveFocus(_ revision: Int, editable: Bool = true, kind: RemoteTextFocus? = nil) {
         var state = receiverState; state.focusRevision = revision; state.textFocus = kind ?? (editable ? .editable : .other)
         updateReceiverState(state)
@@ -334,6 +339,9 @@ final class ControllerModel: ObservableObject {
     // The UI uses this for disconnect cleanup; canControl gates new input only.
     var controlAvailable: Bool { desktopControlEnabled && (demo || (connected && inputAvailable)) }
     var canControl: Bool { controlAvailable && !dragReleasePending }
+    var canChangeSystemVolume: Bool {
+        canControl && foreground && !demo && receiverState.supportsSystemVolume && !volumeBusy
+    }
     var remoteTextFocus: RemoteTextFocus { controlAvailable ? receiverState.textFocus : .unknown }
     var focusRevision: Int { receiverState.focusRevision }
     var statusTitle: String {
@@ -663,6 +671,8 @@ final class ControllerModel: ObservableObject {
         receiverState = ReceiverState()
         motionBusy = false
         scrollBusy = false
+        if volumeBusy { volumeFeedback = String(localized: "音量操作未确认，请查看电脑音量后再操作。") }
+        volumeBusy = false
         queuedDX = 0; queuedDY = 0; queuedScroll = 0
         let oldPending = pending.values
         pending.removeAll()
@@ -756,7 +766,9 @@ final class ControllerModel: ObservableObject {
                 } ?? String(localized: "操作未完成")
                 // A failed injection can have typed a prefix. Unknown errors are conservative.
                 let definitelyRejected = ["input_unavailable", "invalid_frame", "input_failed", "unsupported_key", "too_large", "invalid_message", "rate_limited", "live_text_unsupported", "live_text_conflict", "live_text_changed", "live_text_uncertain", "live_text_invalid"].contains(rawCode ?? "")
-                if item.type == "text" && !definitelyRejected {
+                if item.type == "volume" && ["volume_unknown", "input_unknown", "input_partial"].contains(rawCode ?? "") {
+                    item.completion?(.uncertain)
+                } else if item.type == "text" && !definitelyRejected {
                     notice = String(localized: "电脑未完整确认操作，文字可能已经部分输入。请先查看电脑屏幕。")
                     item.completion?(.uncertain)
                 } else {
@@ -964,6 +976,34 @@ final class ControllerModel: ObservableObject {
         feedback()
         if demo { notice = String(localized: "演示：\(key.uppercased()) 快捷键。"); return }
         send("key", fields: ["key": key, "modifiers": modifiers])
+    }
+
+    /// A remote movement multiplier, not a change to the desktop's OS preference.
+    /// Clear old samples when settings change so they cannot escape at a new speed.
+    func setPointerSpeed(_ value: Double) {
+        sensitivity = value.isFinite ? min(3, max(0.25, value)) : 1
+        queuedDX = 0; queuedDY = 0
+    }
+
+    func changeSystemVolume(_ command: SystemVolumeCommand) {
+        guard canChangeSystemVolume else { return }
+        volumeBusy = true
+        volumeFeedback = nil
+        feedback()
+        let currentGeneration = generation
+        send("volume", fields: ["command": command.rawValue]) { [weak self] result in
+            guard let self, self.generation == currentGeneration else { return }
+            self.volumeBusy = false
+            switch result {
+            case .accepted:
+                // An ACK is not a measured volume level; do not invent a percentage or mute state.
+                self.volumeFeedback = nil
+            case .rejected:
+                self.volumeFeedback = String(localized: "无法调节系统音量，请检查电脑的输出设备和接收器。")
+            case .uncertain:
+                self.volumeFeedback = String(localized: "音量操作未确认，请查看电脑音量后再操作。")
+            }
+        }
     }
 
     func selectAll() {

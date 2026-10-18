@@ -17,6 +17,12 @@ struct GestureSettingsView: View {
         GesturePreset.allCases.first { configuration == GestureConfiguration(preset: $0, target: target) }
     }
 
+    private var replacementDescription: String {
+        target == .computer
+            ? String(localized: "这会替换当前电脑的手势和时间设置，并将指针速度恢复为默认值。")
+            : String(localized: "这会替换当前设备类型的手势和时间设置。")
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -48,13 +54,13 @@ struct GestureSettingsView: View {
                 }
                 Button(String(localized: "取消"), role: .cancel) { pendingPreset = nil }
             } message: {
-                Text(String(localized: "这会替换当前设备类型的手势和时间设置。"))
+                Text(replacementDescription)
             }
             .confirmationDialog(String(localized: "恢复默认手势？"), isPresented: $showResetConfirmation, titleVisibility: .visible) {
                 Button(String(localized: "恢复默认手势"), role: .destructive) { apply(.sofatap) }
                 Button(String(localized: "取消"), role: .cancel) {}
             } message: {
-                Text(String(localized: "这会替换当前设备类型的手势和时间设置。"))
+                Text(replacementDescription)
             }
             .sheet(isPresented: $showPractice) {
                 GesturePracticeView(configuration: configuration, target: target, availableActions: availableActions, guideContext: guideContext)
@@ -166,6 +172,9 @@ struct GestureSettingsView: View {
 
     private var timingSection: some View {
         Section {
+            if target == .computer {
+                pointerSpeedSlider
+            }
             timingSlider(String(localized: "长按等待时间"), value: $configuration.holdDuration,
                          range: GestureConfiguration.holdDurationRange, step: 0.05, identifier: "gestureHoldDuration")
             timingSlider(String(localized: "双击间隔"), value: $configuration.doubleTapInterval,
@@ -178,6 +187,25 @@ struct GestureSettingsView: View {
             Text(String(localized: "双击间隔越长，单击可能等待越久。自然滚动让内容跟随手指；右侧滚动条方向保持不变。"))
         }
         .listRowBackground(Palette.panel)
+    }
+
+    private var pointerSpeedSlider: some View {
+        let value = configuration.pointerSpeed.formatted(.number.precision(.fractionLength(0...2)))
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(String(localized: "指针速度"))
+                Spacer()
+                Text(verbatim: "\(value)×")
+                    .monospacedDigit().foregroundStyle(Palette.muted)
+            }
+            Slider(value: $configuration.pointerSpeed, in: GestureConfiguration.pointerSpeedRange, step: 0.25)
+                .accessibilityLabel(String(localized: "指针速度"))
+                .accessibilityValue(String.localizedStringWithFormat(String(localized: "%@ 倍"), value))
+                .accessibilityIdentifier("gesturePointerSpeed")
+            Text(String(localized: "调整从手机遥控时的指针移动距离，不会更改电脑系统的鼠标设置。"))
+                .font(.footnote).foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }.padding(.vertical, 5)
     }
 
     private func timingSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, identifier: String) -> some View {
