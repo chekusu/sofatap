@@ -2,6 +2,10 @@ package com.chekusu.sofatap.tv.input;
 
 import android.content.Context;
 import android.os.Looper;
+import com.chekusu.sofatap.tv.TVAppShortcuts;
+import java.util.List;
+import java.util.function.BooleanSupplier;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -27,8 +31,26 @@ public final class InputBridge {
                 "capabilities", capabilities, "pointerMode", "accessibility_nodes",
                 "actionResultMeaning", "framework_accepted_not_verified",
                 "hardwareQualified", false, "defaultDisplayOnly", true);
-        if (service != null) service.addProbeFields(result);
+        if (service != null) service.addLocalStatusFields(result);
         return result;
+    }
+
+    public static JSONObject appShortcuts() {
+        requireMainThread();
+        List<String> available = service != null && "ready".equals(service.availability())
+            ? TVAppShortcuts.availableApps(new TVAppLauncher(service)) : List.of();
+        return object("schema", 1, "availableApps", new JSONArray(available));
+    }
+
+    public static JSONObject launchApp(String app, BooleanSupplier current) {
+        requireMainThread();
+        if (current == null || !current.getAsBoolean()) return result(false, "session_ended");
+        if (service == null) return result(false, "accessibility_required");
+        if (!"ready".equals(service.availability())) return result(false, "protected_window");
+        SofatapAccessibilityService target = service;
+        TVAppShortcuts.Result launched = TVAppShortcuts.launch(app, new TVAppLauncher(target),
+            () -> current.getAsBoolean() && service == target && "ready".equals(target.availability()));
+        return result(launched.ok(), launched.code());
     }
 
     public static JSONObject perform(Context context, String action, double x, double y) {

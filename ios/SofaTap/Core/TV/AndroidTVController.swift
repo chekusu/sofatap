@@ -31,7 +31,8 @@ final class AndroidTVController: ObservableObject {
         status = AndroidTVStatus(available: true, inputStatus: .ready,
             capabilities: .init(overlayCursor: true, nodeClick: true, scroll: true, back: true, home: true, directionalFocus: true),
             tvControls: .init(navigationStatus: pairingRequired ? .pairingRequired : .ready,
-                              textStatus: editorReady ? .ready : .noEditor, editorEpoch: editorReady ? UUID() : nil))
+                              textStatus: editorReady ? .ready : .noEditor, editorEpoch: editorReady ? UUID() : nil),
+            appShortcuts: .init(availableApps: [.youtube, .netflix]))
     }
 #endif
     @Published private var paused = false
@@ -39,6 +40,9 @@ final class AndroidTVController: ObservableObject {
     var connectionReady: Bool { phase == .ready && targetSelected && foreground }
     var canControl: Bool { connectionReady && !paused && (status?.available == true || canNavigate || canInputText) }
     var canNavigate: Bool { connectionReady && !paused && status?.tvControls?.navigationStatus == .ready }
+    func canLaunchApp(_ app: AndroidTVAppShortcut) -> Bool {
+        connectionReady && !paused && status?.available == true && status?.appShortcuts?.availableApps.contains(app) == true
+    }
     var canInputText: Bool { connectionReady && !paused && status?.tvControls?.textStatus == .ready && status?.tvControls?.editorEpoch != nil }
     var canSendText: Bool { canInputText && !textCommandPending && textDraft.delivery != .uncertain && !textDraft.text.isEmpty && textDraft.text.utf8.count <= 4096 && !textDraft.text.unicodeScalars.contains(where: { $0.value == 0 }) }
     var canEditTVText: Bool { canInputText && !textCommandPending && textDraft.delivery != .uncertain }
@@ -62,7 +66,14 @@ final class AndroidTVController: ObservableObject {
     private var reconnectAttempt = 0
 #if SOFATAP_ANDROID_TV_TESTING
     var testScheduleReconnect: ((TimeInterval, @escaping () -> Void) -> Void)?
+    var testInputTime: (() -> TimeInterval)?
 #endif
+    private var inputTime: TimeInterval {
+#if SOFATAP_ANDROID_TV_TESTING
+        if let testInputTime { return testInputTime() }
+#endif
+        return Date.timeIntervalSinceReferenceDate
+    }
     private let storage: AndroidTVPairingStorage
     private let makeSocket: @MainActor () -> AndroidTVSocket
     private var socket: AndroidTVSocket?
@@ -84,6 +95,7 @@ final class AndroidTVController: ObservableObject {
     }
     private var queue: [Input] = []
     private var pending: (id: String, action: AndroidTVAction)?
+    private var navigationInterrupted = false
 
     init(enabled: Bool = true, targetSelected: Bool = true, storage: AndroidTVPairingStorage = AndroidTVKeychain(),
          makeSocket: @escaping @MainActor () -> AndroidTVSocket = { AndroidTVNetworkSocket() }) {
@@ -229,6 +241,9 @@ final class AndroidTVController: ObservableObject {
                 if pending.action.isText || pending.action.isPairing || { if case .remoteKey = pending.action { return true }; return false }() {
                     guard newStatus?.tvControls != nil else { throw AndroidTVError.malformedMessage }
                 }
+                if case .appLaunch = pending.action {
+                    guard newStatus?.appShortcuts != nil else { throw AndroidTVError.malformedMessage }
+                }
                 deadline?.cancel(); deadline = nil; self.pending = nil
                 if let newStatus {
                     status = newStatus
@@ -243,7 +258,7 @@ final class AndroidTVController: ObservableObject {
                 if ok {
                     // Motion and heartbeat acknowledgements must not immediately hide a rejected click.
                     switch pending.action {
-                    case .click, .key, .remoteKey, .remotePairStart, .remotePairCode, .textCommit, .textBackspace, .textAction: inputFeedback = nil
+                    case .click, .key, .remoteKey, .appLaunch, .remotePairStart, .remotePairCode, .textCommit, .textBackspace, .textAction: inputFeedback = nil
                     default: break
                     }
                     updateNotice()
@@ -262,6 +277,10 @@ final class AndroidTVController: ObservableObject {
     }
     private static func inputFailureMessage(_ error: String?, action: AndroidTVAction) -> String {
         switch error {
+        case "app_not_installed":
+            return String(localized: "电视上未安装此应用。")
+        case "app_launch_failed":
+            return String(localized: "电视未能打开此应用，请在电视上检查。")
         case "pairing_required", "remote_not_ready", "remote_unavailable":
             return String(localized: "请先连接电视系统遥控服务。")
         case "invalid_pairing_code", "pairing_failed", "invalid_code":
@@ -326,6 +345,10 @@ final class AndroidTVController: ObservableObject {
         guard canNavigate else { return false }
         return enqueue(.remoteKey(key))
     }
+    @discardableResult func launchApp(_ app: AndroidTVAppShortcut) -> Bool {
+        guard canLaunchApp(app) else { return false }
+        return enqueue(.appLaunch(app))
+    }
     @discardableResult func startRemotePairing() -> Bool {
         guard connectionReady, let controls = status?.tvControls, controls.navigationStatus != .unsupported else { return false }
         return enqueue(.remotePairStart)
@@ -360,6 +383,7 @@ final class AndroidTVController: ObservableObject {
         guard !paused else { return false }
         switch action {
         case .remoteKey: return status?.tvControls?.navigationStatus == .ready
+        case .appLaunch(let app): return canLaunchApp(app)
         case .textCommit(let editor, _), .textBackspace(let editor), .textAction(let editor):
             return status?.tvControls?.textStatus == .ready && status?.tvControls?.editorEpoch == editor
         case .ping: return true
@@ -375,6 +399,32 @@ final class AndroidTVController: ObservableObject {
     private func discardUnavailableQueuedInput() {
         discardQueue { !permits($0.action) }
     }
+    private func discardExpiredInput(at now: TimeInterval) {
+        var retained: [Input] = []
+        var interrupted = navigationInterrupted
+        var removedConfirmation = false
+        for input in queue {
+            if input.isExpired(at: now) {
+                if input.action.isDirectionalNavigation { interrupted = true }
+                continue
+            }
+            if interrupted && input.action == .remoteKey(.confirm) {
+                removedConfirmation = true
+                continue
+            }
+            // Explicitly leaving the page no longer depends on its old focus.
+            if input.action.isLeavingPage { interrupted = false }
+            retained.append(input)
+        }
+        queue = retained
+        navigationInterrupted = interrupted
+        if removedConfirmation { reportInterruptedNavigation() }
+    }
+    private func reportInterruptedNavigation() {
+        rejectedInputFeedback &+= 1
+        inputFeedback = String(localized: "电视操作等待过久，请重新选择后确认。")
+        notice = inputFeedback!
+    }
     @discardableResult private func enqueue(_ action: AndroidTVAction) -> Bool {
         guard permits(action), (try? AndroidTVProtocol.encode(action, id: UUID().uuidString)) != nil else { return false }
         if action.isPairing && (pending?.action.isPairing == true || queue.contains(where: { $0.action.isPairing })) { return false }
@@ -384,6 +434,7 @@ final class AndroidTVController: ObservableObject {
             let label: String
             switch action {
             case .remoteKey(let key): label = "remote_key:" + key.rawValue
+            case .appLaunch(let app): label = "app_launch:" + app.rawValue
             case .key(let key): label = "legacy_key:" + key.rawValue
             case .click: label = "legacy_click"
             case .move: label = "legacy_move"
@@ -409,8 +460,14 @@ final class AndroidTVController: ObservableObject {
             return true
         }
 #endif
-        let now = Date.timeIntervalSinceReferenceDate
-        queue.removeAll { $0.isExpired(at: now) }
+        let now = inputTime
+        discardExpiredInput(at: now)
+        if navigationInterrupted && action == .remoteKey(.confirm) {
+            reportInterruptedNavigation(); return false
+        }
+        // A new deliberate navigation starts a new selection. If it expires
+        // too, the next drain invalidates confirmations again.
+        if action.isDirectionalNavigation || action.isLeavingPage { navigationInterrupted = false }
         if action.isLeavingPage {
             // Preserve explicit click / Back / Home ordering. Only an insertion
             // still waiting in the queue becomes unsafe when leaving its editor.
@@ -442,8 +499,7 @@ final class AndroidTVController: ObservableObject {
     private func drain() {
         guard phase == .ready, pending == nil else { return }
         discardUnavailableQueuedInput()
-        let now = Date.timeIntervalSinceReferenceDate
-        queue.removeAll { $0.isExpired(at: now) }
+        discardExpiredInput(at: inputTime)
         guard !queue.isEmpty else { return }
         send(queue.removeFirst().action)
     }
@@ -534,7 +590,7 @@ final class AndroidTVController: ObservableObject {
         } else { textDraft.interrupted(wasSent: false) }
         textCommandPending = false
         socket?.close(); socket = nil; pairing = nil; pending = nil; queue.removeAll()
-        status = nil; inputFeedback = nil; phase = .idle
+        status = nil; inputFeedback = nil; navigationInterrupted = false; phase = .idle
     }
     func forget() {
         guard enabled else { return }

@@ -170,8 +170,7 @@ public final class MainActivity extends Activity {
         selectIme.setVisibility(imeEnabled && !imeSelected ? View.VISIBLE : View.GONE);
         nativeControls.setText(getString(nav.equals("ready") ? R.string.native_remote_ready : nav.equals("pairing") ? R.string.native_remote_pairing : R.string.native_remote_setup)
             + "\n" + getString(imeSelected ? R.string.ime_selected_help : R.string.ime_setup_help));
-        capabilities.setText(getString(R.string.probe_limitations) + "\n" + getString(R.string.probe_state,
-            getString(probe.optBoolean("activeWindowReadable") && !probe.optBoolean("activeWindowProtected") ? R.string.available : R.string.unavailable)));
+        capabilities.setText(R.string.probe_limitations);
     }
     private void refreshUpdates() {
         String state = updates.status();

@@ -8,9 +8,10 @@ import java.util.UUID;
 
 /** Deliberately narrow manual-control wire format. No arbitrary Android intents or scripts. */
 public final class TVProtocol {
-    public record Action(String id, String type, double dx, double dy, String key, String code, String editorEpoch, String text) {
-        public Action(String id, String type, double dx, double dy, String key) { this(id, type, dx, dy, key, null, null, null); }
-        public boolean extended() { return type.startsWith("remote_") || type.startsWith("text_"); }
+    public record Action(String id, String type, double dx, double dy, String key, String code, String editorEpoch, String text, String app) {
+        public Action(String id, String type, double dx, double dy, String key) { this(id, type, dx, dy, key, null, null, null, null); }
+        public Action(String id, String type, double dx, double dy, String key, String code, String editorEpoch, String text) { this(id, type, dx, dy, key, code, editorEpoch, text, null); }
+        public boolean extended() { return type.startsWith("remote_") || type.startsWith("text_") || type.equals("app_launch"); }
     }
     public static Action parse(String text) throws Exception {
         if (text.indexOf('\0') >= 0 || text.length() > WebSocketCodec.MAX_MESSAGE) throw new IllegalArgumentException("invalid_json");
@@ -55,7 +56,7 @@ public final class TVProtocol {
         if (!UUID.fromString(id).toString().equalsIgnoreCase(id)) throw new IllegalArgumentException("invalid_id");
         String type = string(o, "type");
         Set<String> allowed;
-        double dx = 0, dy = 0; String key = null, code = null, editorEpoch = null, content = null;
+        double dx = 0, dy = 0; String key = null, code = null, editorEpoch = null, content = null, app = null;
         switch (type) {
             case "move": case "scroll":
                 allowed = Set.of("id", "type", "dx", "dy");
@@ -71,10 +72,17 @@ public final class TVProtocol {
                 allowed = Set.of("id", "type", "code"); code = string(o, "code");
                 if (!code.matches("[0-9a-fA-F]{6}")) throw new IllegalArgumentException("invalid_pair_code");
                 break;
+            case "app_launch":
+                allowed = Set.of("id", "type", "app"); app = string(o, "app");
+                if (!TVAppShortcuts.supports(app)) throw new IllegalArgumentException("unsupported_app");
+                break;
             case "text_commit": case "text_backspace": case "text_action":
                 allowed = type.equals("text_commit") ? Set.of("id", "type", "editorEpoch", "text") : Set.of("id", "type", "editorEpoch");
                 editorEpoch = string(o, "editorEpoch");
-                if (!UUID.fromString(editorEpoch).toString().equalsIgnoreCase(editorEpoch)) throw new IllegalArgumentException("invalid_editor_epoch");
+                UUID parsedEpoch = UUID.fromString(editorEpoch);
+                if (!parsedEpoch.toString().equalsIgnoreCase(editorEpoch)) throw new IllegalArgumentException("invalid_editor_epoch");
+                // Foundation sends uppercase UUIDs; compare the same canonical value to the Java IME epoch.
+                editorEpoch = parsedEpoch.toString();
                 if (type.equals("text_commit")) {
                     content = string(o, "text");
                     if (content.isEmpty() || content.indexOf('\0') >= 0 || content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 4096)
@@ -89,7 +97,7 @@ public final class TVProtocol {
             default: throw new IllegalArgumentException("unsupported_action");
         }
         if (!keys.equals(allowed)) throw new IllegalArgumentException("unexpected_fields");
-        return new Action(id, type, dx, dy, key, code, editorEpoch, content);
+        return new Action(id, type, dx, dy, key, code, editorEpoch, content, app);
     }
     private static void validateLexicalForm(String text) {
         // Android's tokenizer accepts comments/lenient escapes; JVM org.json differs.

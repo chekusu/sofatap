@@ -268,7 +268,11 @@ public final class ReceiverDeviceTest {
             assertTrue("Fixture must be the TV system image", context.getPackageManager().hasSystemFeature("android.hardware.type.television"));
             fixture = (InputFixtureActivity) instrumentation.startActivitySync(new Intent(context, InputFixtureActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             final InputFixtureActivity target = fixture;
-            until(() -> main(() -> target.click.getWidth() > 0) && snapshot().optBoolean("activeWindowReadable"));
+            until(() -> main(() -> target.click.getWidth() > 0 && target.hasWindowFocus()));
+            JSONObject localStatus = snapshot();
+            assertFalse("Acknowledgments must not query another app's accessibility tree", localStatus.has("activeWindowReadable"));
+            assertFalse(localStatus.has("activeWindowProtected"));
+            assertTrue(localStatus.getInt("displayWidth") > 0);
             SystemClock.sleep(300);
             Rect button = main(() -> { Rect r = new Rect(); target.click.getGlobalVisibleRect(r); return r; });
             moveTo(button.centerX(), button.centerY());

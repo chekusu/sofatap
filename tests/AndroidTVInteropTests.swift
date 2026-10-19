@@ -4,7 +4,7 @@ import Foundation
 /// Fixture storage and the receiver Input driver are in memory. There is no UI or OS input.
 private struct InteropFixture: Decodable { let qr: String }
 private struct InteropStats: Decodable {
-    struct Action: Decodable { let type: String; let dx: Double?; let dy: Double?; let key: String? }
+    struct Action: Decodable { let type: String; let dx: Double?; let dy: Double?; let key: String?; let app: String? }
     let paired: Bool
     let actions: [Action]
     let snapshots: Int
@@ -147,6 +147,16 @@ private final class InteropMemoryStore: AndroidTVPairingStorage {
         require(stats(dir)?.actions.last?.key == "home" && controller.canControl,
             "fresh manual input works after receiver replacement")
         print("PASS real receiver restart and automatic saved-credential recovery; no ambiguous, queued or offline input replay")
+        require(controller.canLaunchApp(.youtube) && controller.canLaunchApp(.netflix),
+                "actual Java hello advertises the fixed app shortcuts")
+        require(controller.launchApp(.youtube), "YouTube shortcut accepted")
+        await wait("YouTube launch acknowledged") { stats(dir)?.actions.count == 9 || controller.phase == .failed }
+        require(controller.launchApp(.netflix), "Netflix shortcut accepted")
+        await wait("both app launches acknowledged") { stats(dir)?.actions.count == 10 || controller.phase == .failed }
+        require(controller.canControl && stats(dir)?.actions.suffix(2).map(\.type) == ["app_launch", "app_launch"] &&
+                stats(dir)?.actions.suffix(2).compactMap(\.app) == ["youtube", "netflix"],
+                "Swift fixed app identifiers cross real TLS and receive fresh Java capability ACKs")
+        print("PASS advertised YouTube/Netflix launch commands across real Swift/Java transport; fixture launches no apps")
         controller.disconnect()
         await wait("all controllers closed") { stats(dir)?.connected == false }
         print("PASS persistent reconnect, consumed-QR rejection, single-controller admission and no replay")

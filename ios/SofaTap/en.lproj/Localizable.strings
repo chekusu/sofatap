@@ -456,3 +456,10 @@
 "电视快捷操作" = "TV quick controls";
 "左右滑动切换操作" = "Swipe left or right to change controls";
 "操作页 %1$d，共 %2$d 页" = "Controls page %1$d of %2$d";
+
+/* TV app shortcuts and delayed navigation. */
+"打开 YouTube" = "Open YouTube";
+"打开 Netflix" = "Open Netflix";
+"电视上未安装此应用。" = "This app is not installed on the TV.";
+"电视未能打开此应用，请在电视上检查。" = "The TV could not open this app. Check the TV.";
+"电视操作等待过久，请重新选择后确认。" = "TV navigation took too long. Select an item again before confirming.";

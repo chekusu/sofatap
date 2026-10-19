@@ -108,16 +108,11 @@ public final class SofatapAccessibilityService extends AccessibilityService {
         return "ready";
     }
 
-    void addProbeFields(JSONObject snapshot) {
-        boolean readable = false;
-        boolean protectedWindow = false;
-        AccessibilityNodeInfo root = null;
+    void addLocalStatusFields(JSONObject snapshot) {
         try {
-            if ("ready".equals(availability())) root = getRootInActiveWindow();
-            readable = root != null && root.refresh();
-            protectedWindow = readable && !safeWindow(root);
-            snapshot.put("activeWindowReadable", readable);
-            snapshot.put("activeWindowProtected", protectedWindow);
+            // A status frame also acknowledges native keys and IME input. It must not
+            // wait for another app's accessibility tree: a slow video app used to delay
+            // every successful native action here. Actual node input checks its target.
             snapshot.put("cursorVisible", overlayAttached);
             snapshot.put("touchscreenFeature", getPackageManager().hasSystemFeature("android.hardware.touchscreen"));
             snapshot.put("fakeTouchFeature", getPackageManager().hasSystemFeature("android.hardware.faketouch"));
@@ -128,7 +123,7 @@ public final class SofatapAccessibilityService extends AccessibilityService {
             }
         } catch (RuntimeException | JSONException ignored) {
             // A probe must never expose exception text containing app data.
-        } finally { recycle(root); }
+        }
     }
 
     JSONObject performInput(String action, double x, double y) {
