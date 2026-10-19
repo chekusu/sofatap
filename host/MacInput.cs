@@ -7,9 +7,10 @@ namespace SofaTap;
 /// Submits events to Quartz, which provides no target-application delivery acknowledgement.
 /// A successful Apply means submission completed, not that a field consumed or saved its text.
 /// </summary>
-public sealed class MacInput : IInputInjector
+public sealed class MacInput : IInputInjector, IDisposable
 {
     private readonly IMacEventSink _sink;
+    private volatile bool _disposed;
     private readonly object _gate = new();
     private readonly HashSet<uint> _buttons = [];
     private readonly Dictionary<ushort, MacEvent> _keys = [];
@@ -28,7 +29,7 @@ public sealed class MacInput : IInputInjector
     {
         get
         {
-            try { return _sink.StatusCode; }
+            try { return _disposed ? "desktop_unavailable" : _sink.StatusCode; }
             catch (Exception error) when (error is DllNotFoundException or EntryPointNotFoundException or InvalidOperationException)
             { return "desktop_unavailable"; }
         }
@@ -122,6 +123,17 @@ public sealed class MacInput : IInputInjector
                 if (error is InputInjectionException) throw;
                 throw new InputInjectionException("input_failed: macOS could not prepare input events. Check the desktop and Accessibility permission.");
             }
+        }
+    }
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            if (_disposed) return;
+            ReleaseOwned();
+            _disposed = true;
+            (_sink as IDisposable)?.Dispose();
         }
     }
 
@@ -294,8 +306,10 @@ internal interface IMacEventSink
     void Post(MacEvent item);
 }
 
-internal sealed class QuartzEventSink : IMacEventSink
+internal sealed class QuartzEventSink : IMacEventSink, IDisposable
 {
+    private readonly CachedMacPostPermission _postPermission = new(QuartzNative.CGPreflightPostEventAccess);
+    public void Dispose() => _postPermission.Dispose();
     public string StatusCode
     {
         get
@@ -305,7 +319,7 @@ internal sealed class QuartzEventSink : IMacEventSink
 #if !SOFATAP_MAC_APP_STORE
                 QuartzNative.AXIsProcessTrusted() &&
 #endif
-                QuartzNative.CGPreflightPostEventAccess()
+                _postPermission.IsAllowed
                 ? "ready" : "accessibility_required";
         }
     }

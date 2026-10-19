@@ -133,6 +133,10 @@ jobs:
             -o "$RUNNER_TEMP/sofatap-desktop-protocol-tests" desktop/macos/ReceiverProtocol.swift \
             desktop/macos/tests/ReceiverProtocolTests.swift
           "$RUNNER_TEMP/sofatap-desktop-protocol-tests"
+      - name: Peer relay identity survives LAN address removal
+        run: bash scripts/macos/test-peer-lifecycle.sh
+      - name: Pinned TLS peer bridge integration without OS input
+        run: SOFATAP_DOTNET="$(command -v dotnet)" python3 tests/peer-tls-bridge.py
       - name: Mac updater policy without network or installation
         shell: bash
         run: |

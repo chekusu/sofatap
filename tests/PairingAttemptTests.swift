@@ -42,6 +42,113 @@ struct PairingAttemptTests {
         let pinB = String(repeating: "b", count: 64)
         let pcA = "sofatap://pair?host=pc-a.local&port=53317&token=\(token)&fingerprint=\(pinA)"
         let pcB = "sofatap://pair?host=pc-b.local&port=53317&token=\(token)&fingerprint=\(pinB)&name=New%20PC"
+        let stagedPairing = try Pairing.parse(pcA)
+        let stagedLibrary = DeviceLibrary(devices: [SavedDevice(credential: stagedPairing)], selectedID: SavedDevice(credential: stagedPairing).id)
+        var prepared: [(UInt16?) -> Void] = []
+        var opened: [Pairing] = []
+        var peerRetries: [() -> Void] = []
+        let staged = ControllerModel(testPairingLibrary: stagedLibrary,
+            testPairingWrite: { _ in stagedLibrary }, testPairingConnect: { opened.append($0) },
+            testScheduleReconnect: { _, retry in peerRetries.append(retry) },
+            testPrepareConnection: { prepared.append($0) })
+        staged.connect()
+        check("transport waits for route preparation", staged.connecting && opened.isEmpty && prepared.count == 1)
+        staged.disconnectDevice()
+        prepared[0](nil)
+        check("late preparation cannot reopen a disconnected device", opened.isEmpty && !staged.connecting)
+        staged.connect()
+        prepared[0](nil)
+        check("old preparation cannot replace a newer connection attempt", opened.isEmpty)
+        prepared[1](12345)
+        check("current preparation starts authenticated connection", opened == [stagedPairing])
+        staged.testTransportFailure(retryable: true)
+        check("failed peer handshake schedules one retry", peerRetries.count == 1)
+        peerRetries[0]()
+        check("peer handshake failure retries LAN without another discovery", prepared.count == 2 && opened.count == 2)
+        staged.disconnectDevice()
+        staged.connect()
+        prepared[2](12346)
+        staged.testConnectionEstablished()
+        check("established peer reports peer route", staged.connected && staged.usesPeerTransport)
+        staged.testTransportFailure(retryable: true)
+        check("established peer failure schedules recovery", peerRetries.count == 2 && !staged.connected)
+        peerRetries[1]()
+        check("established peer failure recovers over LAN without rediscovery", prepared.count == 3 && opened.count == 4)
+        staged.testConnectionEstablished()
+        check("recovered LAN clears peer route label", staged.connected && !staged.usesPeerTransport)
+        staged.disconnectDevice()
+        // Mode changes must persist, invalidate old route callbacks and reconnect
+        // only an active connection; a manually disconnected device stays paused.
+        let modeSuite = "Sofatap-mode-test-" + UUID().uuidString
+        let modeDefaults = UserDefaults(suiteName: modeSuite)!
+        defer { modeDefaults.removePersistentDomain(forName: modeSuite) }
+        var modePrepared: [(UInt16?) -> Void] = []
+        var modeOpened = 0
+        func modeModel() -> ControllerModel {
+            ControllerModel(testPairingLibrary: stagedLibrary, testPairingWrite: { _ in stagedLibrary },
+                testPairingConnect: { _ in modeOpened += 1 },
+                testPrepareConnection: { modePrepared.append($0) }, testConnectionDefaults: modeDefaults)
+        }
+        let mode = modeModel()
+        check("connection preference defaults to automatic", mode.connectionMode == .automatic)
+        mode.connect()
+        mode.setConnectionMode(.wifi)
+        check("switching to Wi-Fi skips discovery and starts fresh transport", modeOpened == 1 && modePrepared.count == 1)
+        modePrepared[0](12349)
+        check("old peer completion cannot override manual Wi-Fi", modeOpened == 1)
+        mode.testConnectionEstablished()
+        check("Wi-Fi route does not report peer", !mode.usesPeerTransport)
+        mode.setConnectionMode(.wifi)
+        check("same mode does not reconnect", modeOpened == 1 && mode.connected)
+        check("mode survives model recreation", modeModel().connectionMode == .wifi)
+        mode.setConnectionMode(.automatic)
+        check("automatic selection retries peer discovery", modePrepared.count == 2 && !mode.connected)
+        modePrepared[1](12350)
+        mode.testConnectionEstablished()
+        check("automatic can return to peer", mode.usesPeerTransport)
+        mode.disconnectDevice()
+        mode.setConnectionMode(.wifi)
+        check("preference change preserves manual disconnect", !mode.connecting && !mode.connected && modeOpened == 2)
+        mode.connect()
+        check("manual connect uses persisted Wi-Fi preference", modeOpened == 3 && modePrepared.count == 2)
+        mode.disconnectDevice()
+        var availabilityReplies: [(Bool) -> Void] = []
+        let availability = ControllerModel(testPairingLibrary: stagedLibrary,
+            testPairingWrite: { _ in stagedLibrary }, testPairingConnect: { _ in },
+            testPeerAvailabilityMonitor: { availabilityReplies.append($0) })
+        check("route selector hidden before discovery", !availability.peerConnectionAvailable)
+        availability.startPeerAvailabilityMonitoring()
+        availabilityReplies[0](true)
+        check("matching peer discovery exposes selector", availability.peerConnectionAvailable)
+        availability.setConnectionMode(.wifi)
+        check("Wi-Fi selection retains available peer choice", availability.peerConnectionAvailable)
+        availabilityReplies[0](false)
+        check("peer disappearance hides selector", !availability.peerConnectionAvailable)
+        availability.stopPeerAvailabilityMonitoring()
+        availabilityReplies[0](true)
+        check("stale availability callback cannot expose selector", !availability.peerConnectionAvailable)
+        availability.startPeerAvailabilityMonitoring()
+        check("fresh monitor starts hidden", !availability.peerConnectionAvailable && availabilityReplies.count == 2)
+        availabilityReplies[1](true)
+        availability.stopPeerAvailabilityMonitoring()
+        check("closing settings clears availability", !availability.peerConnectionAvailable)
+        availability.startPeerAvailabilityMonitoring()
+        availabilityReplies[2](true)
+        availability.startPeerAvailabilityMonitoring()
+        check("repeated settings lifecycle event reuses active monitor", availabilityReplies.count == 3 && availability.peerConnectionAvailable)
+        availability.becameInactive()
+        check("model inactivity clears monitoring without view callback", !availability.peerConnectionAvailable)
+        availabilityReplies[2](true)
+        availability.startPeerAvailabilityMonitoring()
+        check("inactive model neither accepts old results nor starts browsing", !availability.peerConnectionAvailable && availabilityReplies.count == 3)
+        availability.becameActive()
+        check("foreground resumes a monitor requested before model activation", availabilityReplies.count == 4)
+        availability.startPeerAvailabilityMonitoring()
+        availabilityReplies[3](true)
+        availability.setDesktopControlEnabled(false)
+        check("switching to TV clears peer monitor at model boundary", !availability.peerConnectionAvailable)
+        availabilityReplies[3](true)
+        check("TV cannot receive stale desktop availability", !availability.peerConnectionAvailable)
         let tv = "sofatap://tv?host=192.168.1.8&port=53318&token=\(token)&fingerprint=\(pinA)"
         let reorderedTV = "SOFATAP://tv?fingerprint=\(pinA.uppercased())&name=New%20label&token=\(token)&port=053318&host=192.168.1.8"
         var attempt = PairingAttemptState()

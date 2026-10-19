@@ -34,6 +34,7 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © CHEKUSU INC. Sofatap is available under the MIT license.</string>
+	<key>NSBonjourServices</key><array><string>_sofatap-peer._tcp</string></array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Sofatap receives mouse and keyboard commands from your paired iPhone over your local network.</string>
 	<key>NSPrincipalClass</key>

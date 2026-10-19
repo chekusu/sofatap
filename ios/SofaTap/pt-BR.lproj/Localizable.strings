@@ -453,6 +453,18 @@
 "左右滑动切换操作" = "Deslize para a esquerda ou direita para mudar de controles";
 "操作页 %1$d，共 %2$d 页" = "Página de controles %1$d de %2$d";
 
+"连接模式" = "Modo de conexão";
+
+"自动（优先直连）" = "Auto (priorizar direta)";
+
+"普通 Wi-Fi" = "Wi-Fi comum";
+
+"自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。" = "O modo automático prioriza uma conexão direta disponível; caso contrário, usa Wi-Fi comum. A troca de modo reconecta e salva sua escolha.";
+
+"已连接 · 普通 Wi-Fi" = "Conectado · Wi-Fi comum";
+
+"已连接 · 设备直连" = "Conectado · Conexão direta";
+
 /* Desktop pointer speed and system volume controls. */
 "指针速度" = "Velocidade do ponteiro";
 "%@ 倍" = "%@ vezes";

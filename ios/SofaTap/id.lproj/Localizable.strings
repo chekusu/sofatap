@@ -453,6 +453,18 @@
 "左右滑动切换操作" = "Usap ke kiri atau kanan untuk mengganti kontrol";
 "操作页 %1$d，共 %2$d 页" = "Halaman kontrol %1$d dari %2$d";
 
+"连接模式" = "Mode koneksi";
+
+"自动（优先直连）" = "Otomatis (utamakan langsung)";
+
+"普通 Wi-Fi" = "Wi-Fi biasa";
+
+"自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。" = "Mode otomatis mengutamakan koneksi langsung yang tersedia; jika tidak, menggunakan Wi-Fi biasa. Mengganti mode akan menyambungkan ulang dan menyimpan pilihan.";
+
+"已连接 · 普通 Wi-Fi" = "Terhubung · Wi-Fi biasa";
+
+"已连接 · 设备直连" = "Terhubung · Koneksi langsung";
+
 /* Desktop pointer speed and system volume controls. */
 "指针速度" = "Kecepatan penunjuk";
 "%@ 倍" = "%@ kali";

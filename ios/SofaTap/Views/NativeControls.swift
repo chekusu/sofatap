@@ -252,6 +252,8 @@ struct TouchSurface: UIViewRepresentable {
     final class TouchInputView: UIView {
         private var parent: TouchSurface?
         private var state = TouchGestureState()
+        private var pointerMotion = DesktopPointerMotion()
+        private var pointerTimestamp = 0.0
         private var contacts: [ObjectIdentifier: CGPoint] = [:]
         private var contactOrigins: [ObjectIdentifier: CGPoint] = [:]
         private var deadlineTimer: Timer?
@@ -299,6 +301,7 @@ struct TouchSurface: UIViewRepresentable {
                 accessibilityCustomActions?.append(UIAccessibilityCustomAction(name: String(localized: "右键单击"), target: self, selector: #selector(accessibleRightClick)))
             }
             isUserInteractionEnabled = parent.enabled && active
+            effects.setInteractionFrameRate(parent.profile == .desktop ? (window?.screen.maximumFramesPerSecond ?? 60) : 60)
             effects.setActive(parent.enabled && active && window != nil)
 #if targetEnvironment(simulator)
             effects.startPreviewIfRequested()
@@ -313,6 +316,7 @@ struct TouchSurface: UIViewRepresentable {
         }
         override func didMoveToWindow() {
             super.didMoveToWindow()
+            effects.setInteractionFrameRate(parent?.profile == .desktop ? (window?.screen.maximumFramesPerSecond ?? 60) : 60)
             effects.setActive(window != nil && active && parent?.enabled == true)
             if window == nil { cancelInput() }
 #if targetEnvironment(simulator)
@@ -339,6 +343,7 @@ struct TouchSurface: UIViewRepresentable {
 #endif
         }
         func cancelInput() {
+            pointerMotion.reset()
             deadlineTimer?.invalidate()
             deadlineTimer = nil
             contacts.removeAll()
@@ -357,6 +362,12 @@ struct TouchSurface: UIViewRepresentable {
                 contactOrigins[id] = point
             }
             effectPoint = CGPoint(x: centroid.x, y: centroid.y)
+            pointerTimestamp = event?.timestamp ?? now
+            pointerMotion.reset(at: pointerTimestamp)
+#if DEBUG
+            PointerTiming.shared.resetPulse("touchInterval")
+            PointerTiming.shared.count("contacts")
+#endif
             dispatch(state.begin(at: centroid, count: contacts.count, time: event?.timestamp ?? now, region: touchRegion))
             effects.beginContact(at: effectPoint)
             scheduleDeadline()
@@ -375,6 +386,11 @@ struct TouchSurface: UIViewRepresentable {
                 effectPoint = CGPoint(x: centroid.x, y: centroid.y)
                 effects.updateContact(at: effectPoint)
             }
+            pointerTimestamp = event?.timestamp ?? now
+#if DEBUG
+            PointerTiming.shared.pulse("touchInterval", at: pointerTimestamp)
+            PointerTiming.shared.sample("touchDelivery", seconds: now - pointerTimestamp)
+#endif
             dispatch(state.move(to: centroid, count: contacts.count, time: event?.timestamp ?? now, region: touchRegion))
             scheduleDeadline()
         }
@@ -404,6 +420,7 @@ struct TouchSurface: UIViewRepresentable {
             }
             dispatch(state.end(at: finalPoint, remainingCount: contacts.count, time: event?.timestamp ?? now, region: finalRegion,
                                remainingPoint: contacts.isEmpty ? nil : centroid))
+            pointerMotion.reset()
             effects.endContact()
             scheduleDeadline()
         }
@@ -436,7 +453,12 @@ struct TouchSurface: UIViewRepresentable {
             for action in actions {
                 switch action {
                 case .move(let dx, let dy):
-                    parent.onMove(dx, dy)
+                    if parent.profile == .desktop {
+                        let motion = pointerMotion.feed(dx: dx, dy: dy, time: pointerTimestamp)
+                        if motion.x != 0 || motion.y != 0 { parent.onMove(motion.x, motion.y) }
+                    } else {
+                        parent.onMove(dx, dy)
+                    }
                     effects.moveTrail(to: effectPoint)
                 case .leftClick:
                     parent.onLeftTap()

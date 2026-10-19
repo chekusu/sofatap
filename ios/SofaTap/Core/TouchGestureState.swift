@@ -19,6 +19,10 @@ struct TouchGestureState {
     static let holdDuration = 0.300
     static let doubleTapInterval = 0.280
     static let stationaryMovementTolerance = 7.0
+    private var movementTolerance: Double {
+        profile == .desktop && mode == .one && configuration.action(for: .oneFingerMove) == .movePointer
+            ? 3 : Self.stationaryMovementTolerance
+    }
     private let doubleTapDistance = 32.0
     private let multiTapDuration = 0.250
     private var mode = Mode.idle
@@ -112,7 +116,7 @@ struct TouchGestureState {
         if count != contactCount { return switchContactCount(count, point: point, time: time) }
         let dx = point.x - previous.x, dy = point.y - previous.y
         previous = point
-        if origin.distance(to: point) > Self.stationaryMovementTolerance {
+        if origin.distance(to: point) > movementTolerance {
             moved = true
             multiTapEligible = false
             holdDeadline = nil
@@ -158,7 +162,7 @@ struct TouchGestureState {
         var actions: [Action] = []
         if mode == .one {
             if tapRegion != region { tapRegion = nil }
-            if origin.distance(to: point) > Self.stationaryMovementTolerance { moved = true; holdDeadline = nil }
+            if origin.distance(to: point) > movementTolerance { moved = true; holdDeadline = nil }
             actions += advance(to: time)
             if isDragging {
                 actions.append(.dragging(false))
@@ -304,5 +308,34 @@ struct TouchGestureState {
         secondTap = false
         tapRegion = nil
         suppressLiftClick = false
+    }
+}
+
+/// Desktop-only gain in UIKit points per second. Smooth the speed estimate, never
+/// the direction/displacement: stopping creates no tail and reversals are immediate.
+/// Kept with touch semantics so native and offscreen adapters share the same code.
+struct DesktopPointerMotion {
+    private var previousTime: Double?
+    private var speed = 0.0
+
+    mutating func reset(at time: Double? = nil) {
+        previousTime = time
+        speed = 0
+    }
+
+    mutating func feed(dx: Double, dy: Double, time: Double) -> (x: Double, y: Double) {
+        guard dx.isFinite, dy.isFinite, time.isFinite else { reset(); return (0, 0) }
+        guard let previousTime else { reset(at: time); return (dx, dy) }
+        let dt = time - previousTime
+        guard dt > 0 else { return (0, 0) }
+        self.previousTime = time
+        guard dt <= 0.12 else { speed = 0; return (dx, dy) }
+        let distance = hypot(dx, dy)
+        guard distance > 0 else { speed = 0; return (0, 0) }
+        speed += (1 - exp(-dt / 0.025)) * (distance / dt - speed)
+        // A continuous smoothstep from precise placement to fast cross-screen travel.
+        let t = min(1, max(0, (speed - 60) / 540))
+        let gain = 1 + 1.2 * t * t * (3 - 2 * t)
+        return (dx * gain, dy * gain)
     }
 }

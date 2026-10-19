@@ -453,6 +453,18 @@
 "左右滑动切换操作" = "Nach links oder rechts wischen, um die Bedienelemente zu wechseln";
 "操作页 %1$d，共 %2$d 页" = "Steuerungsseite %1$d von %2$d";
 
+"连接模式" = "Verbindungsmodus";
+
+"自动（优先直连）" = "Auto (Direkt bevorzugt)";
+
+"普通 Wi-Fi" = "Normales WLAN";
+
+"自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。" = "Automatisch wird eine verfügbare Direktverbindung bevorzugt, sonst normales WLAN. Ein Moduswechsel verbindet erneut und speichert Ihre Auswahl.";
+
+"已连接 · 普通 Wi-Fi" = "Verbunden · Normales WLAN";
+
+"已连接 · 设备直连" = "Verbunden · Direktverbindung";
+
 /* Desktop pointer speed and system volume controls. */
 "指针速度" = "Zeigergeschwindigkeit";
 "%@ 倍" = "%@-fach";

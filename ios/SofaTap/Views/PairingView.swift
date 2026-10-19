@@ -10,6 +10,7 @@ struct PairingView: View {
     let androidSelected: Bool
     @Binding var incomingLink: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showingAddDevice = false
     @State private var renameTarget: DeviceTarget?
     @State private var removeTarget: DeviceTarget?
@@ -27,6 +28,7 @@ struct PairingView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     savedDevices
+                    if model.desktopControlEnabled && model.peerConnectionAvailable { connectionModeSettings }
                     VStack(alignment: .leading, spacing: 10) {
                         Text(String(localized: "添加设备")).font(.headline)
                         Button { showingAddDevice = true } label: {
@@ -67,7 +69,15 @@ struct PairingView: View {
                     .presentationDragIndicator(.visible)
             }
             .onChange(of: incomingLink) { _, link in if link != nil { showingAddDevice = true } }
+            .onDisappear { model.stopPeerAvailabilityMonitoring() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { model.startPeerAvailabilityMonitoring() }
+                else { model.stopPeerAvailabilityMonitoring() }
+            }
+            .onChange(of: model.pairing) { _, _ in model.startPeerAvailabilityMonitoring() }
+            .onChange(of: model.desktopControlEnabled) { _, _ in model.startPeerAvailabilityMonitoring() }
             .onAppear {
+                model.startPeerAvailabilityMonitoring()
                 if incomingLink != nil { showingAddDevice = true }
 #if targetEnvironment(simulator)
                 if model.demo { showingAddDevice = (ProcessInfo.processInfo.arguments.contains("--demo-add-device") ||
@@ -85,6 +95,26 @@ struct PairingView: View {
             } message: { Text(String(localized: "仅从这台 iPhone 移除，不会关闭接收器或影响其他手机。再次连接需要重新配对。")) }
         }
         .tint(Palette.mint).preferredColorScheme(.dark)
+    }
+
+    private var connectionModeSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(String(localized: "连接模式")).font(.headline)
+            Picker(String(localized: "连接模式"), selection: Binding(
+                get: { model.connectionMode }, set: { model.setConnectionMode($0) }
+            )) {
+                Text(String(localized: "自动（优先直连）")).tag(DesktopConnectionMode.automatic)
+                Text(String(localized: "普通 Wi-Fi")).tag(DesktopConnectionMode.wifi)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("desktopConnectionMode")
+            Text(String(localized: "自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。"))
+                .font(.footnote).foregroundStyle(Palette.muted)
+            if model.connected {
+                Text(model.usesPeerTransport ? String(localized: "已连接 · 设备直连") : String(localized: "已连接 · 普通 Wi-Fi"))
+                    .font(.footnote).foregroundStyle(Palette.mint)
+            }
+        }
     }
 
     @ViewBuilder private var savedDevices: some View {
