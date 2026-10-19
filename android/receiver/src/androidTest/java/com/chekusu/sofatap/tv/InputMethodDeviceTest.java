@@ -14,6 +14,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.platform.app.InstrumentationRegistry;
 import com.chekusu.sofatap.tv.input.ImeSession;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.Locale;
+import java.util.UUID;
+import org.json.JSONObject;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -60,6 +63,25 @@ public final class InputMethodDeviceTest {
             selectionChanged();
             assertTrue(apply("text_backspace", epoch, null).ok());
             assertEquals("沙发 日本語", activity.editor.getText().toString());
+        });
+    }
+
+    @Test public void uppercaseWireEpochReachesRealEditorButOldEpochStillFails() throws Exception {
+        main(() -> {
+            String epoch = start("", false);
+            // Foundation UUID.uuidString sends uppercase while Java advertises lowercase.
+            assertTrue(applyWire("text_commit", epoch.toUpperCase(Locale.ROOT), "沙发🛋").ok());
+            assertEquals("沙发🛋", activity.editor.getText().toString());
+            selectionChanged();
+            assertTrue(applyWire("text_backspace", epoch.toUpperCase(Locale.ROOT), null).ok());
+            assertEquals("沙发", activity.editor.getText().toString());
+            int[] action = {-1};
+            activity.editor.setOnEditorActionListener((view, id, event) -> { action[0] = id; return true; });
+            assertTrue(applyWire("text_action", epoch.toUpperCase(Locale.ROOT), null).ok());
+            assertEquals(EditorInfo.IME_ACTION_SEARCH, action[0]);
+            start("next editor", false);
+            assertEquals("stale_editor", applyWire("text_commit", epoch.toUpperCase(Locale.ROOT), "late").code());
+            assertEquals("next editor", activity.editor.getText().toString());
         });
     }
 
@@ -163,6 +185,15 @@ public final class InputMethodDeviceTest {
     }
     private ImeSession.Result apply(String type, String epoch, String text) {
         return session.apply(type, epoch, text, () -> true);
+    }
+    private ImeSession.Result applyWire(String type, String epoch, String text) {
+        try {
+            JSONObject wire = new JSONObject().put("id", UUID.randomUUID().toString())
+                .put("type", type).put("editorEpoch", epoch);
+            if (text != null) wire.put("text", text);
+            TVProtocol.Action parsed = TVProtocol.parse(wire.toString());
+            return apply(parsed.type(), parsed.editorEpoch(), parsed.text());
+        } catch (Exception error) { throw new AssertionError(error); }
     }
     private void main(Runnable operation) throws Exception {
         AtomicReference<Throwable> failure = new AtomicReference<>();

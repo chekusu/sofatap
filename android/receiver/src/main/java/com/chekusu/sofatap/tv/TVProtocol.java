@@ -74,7 +74,10 @@ public final class TVProtocol {
             case "text_commit": case "text_backspace": case "text_action":
                 allowed = type.equals("text_commit") ? Set.of("id", "type", "editorEpoch", "text") : Set.of("id", "type", "editorEpoch");
                 editorEpoch = string(o, "editorEpoch");
-                if (!UUID.fromString(editorEpoch).toString().equalsIgnoreCase(editorEpoch)) throw new IllegalArgumentException("invalid_editor_epoch");
+                UUID parsedEpoch = UUID.fromString(editorEpoch);
+                if (!parsedEpoch.toString().equalsIgnoreCase(editorEpoch)) throw new IllegalArgumentException("invalid_editor_epoch");
+                // Foundation sends uppercase UUIDs; compare the same canonical value to the Java IME epoch.
+                editorEpoch = parsedEpoch.toString();
                 if (type.equals("text_commit")) {
                     content = string(o, "text");
                     if (content.isEmpty() || content.indexOf('\0') >= 0 || content.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 4096)
