@@ -452,3 +452,10 @@
 "电视快捷操作" = "Kontrol cepat TV";
 "左右滑动切换操作" = "Usap ke kiri atau kanan untuk mengganti kontrol";
 "操作页 %1$d，共 %2$d 页" = "Halaman kontrol %1$d dari %2$d";
+
+/* TV app shortcuts and delayed navigation. */
+"打开 YouTube" = "Buka YouTube";
+"打开 Netflix" = "Buka Netflix";
+"电视上未安装此应用。" = "Aplikasi ini tidak terpasang di TV.";
+"电视未能打开此应用，请在电视上检查。" = "TV tidak dapat membuka aplikasi ini. Periksa TV.";
+"电视操作等待过久，请重新选择后确认。" = "Navigasi TV terlalu lama. Pilih item lagi sebelum mengonfirmasi.";

@@ -73,6 +73,26 @@ struct AndroidTVStatus: Equatable, Sendable {
     let inputStatus: AndroidTVInputStatus
     let capabilities: AndroidTVCapabilities
     var tvControls: AndroidTVControls? = nil
+    var appShortcuts: AndroidTVAppShortcuts? = nil
+}
+enum AndroidTVAppShortcut: String, CaseIterable, Sendable { case youtube, netflix }
+
+/// This extension lives outside tvControls so older clients keep their strict
+/// v1 decoder. Only known app identifiers can ever become an outgoing command.
+struct AndroidTVAppShortcuts: Equatable, Sendable {
+    let availableApps: [AndroidTVAppShortcut]
+    static func parse(_ value: Any?) throws -> Self? {
+        guard let value else { return nil }
+        guard let object = value as? [String: Any],
+              Set(object.keys) == ["schema", "availableApps"],
+              let schema = object["schema"] as? NSNumber, CFGetTypeID(schema) != CFBooleanGetTypeID(), schema.doubleValue == 1,
+              let apps = object["availableApps"] as? [String], apps.count <= 16,
+              Set(apps).count == apps.count,
+              apps.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 32 && $0.utf8.allSatisfy(AndroidTVProtocol.identifierByte) })
+        else { throw AndroidTVError.malformedMessage }
+        // Future allowlisted receiver apps do not create arbitrary client actions.
+        return Self(availableApps: apps.compactMap(AndroidTVAppShortcut.init(rawValue:)))
+    }
 }
 enum AndroidTVResponse: Equatable, Sendable {
     case hello(name: String, status: AndroidTVStatus, pairingToken: String?)
@@ -82,6 +102,7 @@ enum AndroidTVKey: String, Sendable { case back, home, up, down, left, right, co
 enum AndroidTVAction: Equatable, Sendable {
     case move(dx: Double, dy: Double), click, scroll(dx: Double, dy: Double), key(AndroidTVKey), ping
     case remotePairStart, remotePairCode(String), remoteKey(AndroidTVKey)
+    case appLaunch(AndroidTVAppShortcut)
     case textCommit(editorEpoch: UUID, text: String), textBackspace(editorEpoch: UUID), textAction(editorEpoch: UUID)
 
     var isText: Bool {
@@ -91,10 +112,15 @@ enum AndroidTVAction: Equatable, Sendable {
         switch self { case .remotePairStart, .remotePairCode: return true; default: return false }
     }
     var isLeavingPage: Bool {
-        self == .key(.back) || self == .key(.home) || self == .remoteKey(.back) || self == .remoteKey(.home)
+        if case .appLaunch = self { return true }
+        return self == .key(.back) || self == .key(.home) || self == .remoteKey(.back) || self == .remoteKey(.home)
+    }
+    var isDirectionalNavigation: Bool {
+        guard case .remoteKey(let key) = self else { return false }
+        return key == .up || key == .down || key == .left || key == .right
     }
     var isDiscrete: Bool {
-        switch self { case .click, .key, .remoteKey, .textCommit, .textBackspace, .textAction: return true; default: return false }
+        switch self { case .click, .key, .remoteKey, .appLaunch, .textCommit, .textBackspace, .textAction: return true; default: return false }
     }
 }
 
@@ -119,6 +145,7 @@ enum AndroidTVProtocol {
             guard code.utf8.count == 6, code.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }) else { throw AndroidTVError.invalidAction }
             object["type"] = "remote_pair_code"; object["code"] = code.uppercased()
         case .remoteKey(let key): object["type"] = "remote_key"; object["key"] = key.rawValue
+        case .appLaunch(let app): object["type"] = "app_launch"; object["app"] = app.rawValue
         case .textCommit(let epoch, let text):
             guard !text.isEmpty, text.utf8.count <= 4096, !text.unicodeScalars.contains(where: { $0.value == 0 }) else { throw AndroidTVError.invalidAction }
             object["type"] = "text_commit"; object["editorEpoch"] = epoch.uuidString; object["text"] = text
@@ -151,7 +178,7 @@ enum AndroidTVProtocol {
         guard type == "ack", let id = object["id"] as? String, UUID(uuidString: id) != nil,
               let ok = boolean(object["ok"]) else { throw AndroidTVError.malformedMessage }
         let status: AndroidTVStatus?
-        if object["inputAvailable"] != nil || object["inputStatus"] != nil || object["capabilities"] != nil || object["tvControls"] != nil {
+        if object["inputAvailable"] != nil || object["inputStatus"] != nil || object["capabilities"] != nil || object["tvControls"] != nil || object["appShortcuts"] != nil {
             status = try parseStatus(object)
         } else { status = nil }
         // Error codes are never shown verbatim; retain a bounded identifier for internal classification.
@@ -174,7 +201,8 @@ enum AndroidTVProtocol {
         return AndroidTVStatus(available: available, inputStatus: status,
                                capabilities: .init(overlayCursor: overlay, nodeClick: click, scroll: scroll,
                                                    back: back, home: home, directionalFocus: focus),
-                               tvControls: try AndroidTVControls.parse(object["tvControls"]))
+                               tvControls: try AndroidTVControls.parse(object["tvControls"]),
+                               appShortcuts: try AndroidTVAppShortcuts.parse(object["appShortcuts"]))
     }
     private static func boolean(_ value: Any?) -> Bool? {
         guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { return nil }

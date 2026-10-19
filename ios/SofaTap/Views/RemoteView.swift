@@ -576,7 +576,18 @@ struct RemoteView: View {
                                            identifier: "tvControlMode", value: tvMode == .navigation ? String(localized: "电视遥控") : String(localized: "光标模式")) {
             toggleTVControlMode()
         }
-        return [[back, home], [directions, mode]]
+        var pages = [[back, home], [directions, mode]]
+        let apps = androidTV.status?.appShortcuts?.availableApps ?? []
+        let shortcuts = AndroidTVAppShortcut.allCases.filter { apps.contains($0) }.map { app in
+            TVAuxiliaryPager.Action(symbol: app == .youtube ? "play.rectangle" : "n.square",
+                                    label: app == .youtube ? String(localized: "打开 YouTube") : String(localized: "打开 Netflix"),
+                                    identifier: "tvLaunch_" + app.rawValue,
+                                    enabled: inputEnabled && androidTV.canLaunchApp(app)) {
+                _ = androidTV.launchApp(app)
+            }
+        }
+        if !shortcuts.isEmpty { pages.append(shortcuts) }
+        return pages
     }
     private func toggleTVControlMode() {
         touchControl.cancel(); tvNavigationControl.cancel(); tvAuxiliaryControl.cancel(); edgeScrollControl.cancel(); tvWantsDictation = false

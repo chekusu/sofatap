@@ -66,6 +66,49 @@ public class ReceiverServerTest {
         assertTrue(resumed.message().getBoolean("ok")); assertEquals(1, input.applied.get());
     }
 
+    @Test public void authenticatedAppShortcutIsAcknowledgedOnceWithAnOptionalTopLevelCapability() throws Exception {
+        input.nativeControls = true;
+        SocketPeer peer = connect(bootstrap); JSONObject hello = peer.message();
+        assertEquals(1, hello.getJSONObject("appShortcuts").getInt("schema"));
+        assertEquals("youtube", hello.getJSONObject("appShortcuts").getJSONArray("availableApps").getString(0));
+        assertFalse("Old iOS strictly parses this object", hello.getJSONObject("tvControls").has("appShortcuts"));
+        String id = UUID.randomUUID().toString();
+        String command = new JSONObject(action(id, "app_launch")).put("app", "youtube").toString();
+        peer.socket.send(command); peer.socket.send(command);
+        for (int i = 0; i < 2; i++) {
+            JSONObject ack = peer.message();
+            assertEquals(id, ack.getString("id")); assertTrue(ack.getBoolean("ok"));
+            assertTrue(ack.has("appShortcuts"));
+        }
+        assertEquals(1, input.applied.get()); assertEquals("youtube", input.received.get(0).app());
+        input.rejectedCode = "app_not_installed";
+        peer.socket.send(new JSONObject(action(UUID.randomUUID().toString(), "app_launch")).put("app", "netflix").toString());
+        JSONObject missing = peer.message();
+        assertFalse(missing.getBoolean("ok")); assertEquals("app_not_installed", missing.getString("error"));
+        assertTrue(server.connected());
+    }
+
+    @Test public void rapidNativeNavigationAndTextKeepTheirOrderAndDoNotDisconnect() throws Exception {
+        input.nativeControls = true;
+        SocketPeer peer = connect(bootstrap); peer.message();
+        List<String> ids = new ArrayList<>();
+        for (int repeat = 0; repeat < 4; repeat++) {
+            for (String key : new String[]{"up", "down", "left", "right", "confirm", "back", "home"}) {
+                String id = UUID.randomUUID().toString(); ids.add(id);
+                assertTrue(peer.socket.send(new JSONObject(action(id, "remote_key")).put("key", key).toString()));
+            }
+        }
+        String textId = UUID.randomUUID().toString(); ids.add(textId);
+        peer.socket.send(new JSONObject(action(textId, "text_commit")).put("editorEpoch", input.editorEpoch.toUpperCase(Locale.ROOT))
+            .put("text", "中文 日本語 🛋️ after navigation").toString());
+        for (String id : ids) {
+            JSONObject ack = peer.message(); assertEquals(id, ack.getString("id")); assertTrue(ack.getBoolean("ok"));
+        }
+        assertEquals(ids.size(), input.applied.get());
+        assertEquals(input.editorEpoch, input.received.get(ids.size() - 1).editorEpoch());
+        assertTrue(server.connected());
+    }
+
     @Test public void naturalWorkerExitInvalidatesOldInputBeforeAReplacementCanAcquireHello() throws Exception {
         SocketPeer first = connect(bootstrap); String token = first.message().getString("pairingToken");
         input.blockDisconnect = true;
@@ -399,7 +442,8 @@ public class ReceiverServerTest {
             JSONObject status = new JSONObject().put("ready", true);
             if (nativeControls) status.put("inputAvailable", false).put("inputStatus", "accessibility_required")
                 .put("capabilities", new JSONObject().put("text", false))
-                .put("tvControls", new JSONObject().put("version", 1).put("navigationStatus", "ready").put("textStatus", "ready").put("editorEpoch", editorEpoch));
+                .put("tvControls", new JSONObject().put("version", 1).put("navigationStatus", "ready").put("textStatus", "ready").put("editorEpoch", editorEpoch))
+                .put("appShortcuts", new JSONObject().put("schema", 1).put("availableApps", new org.json.JSONArray().put("youtube").put("netflix")));
             return status;
         }
         public JSONObject apply(TVProtocol.Action action, BooleanSupplier current) throws Exception {

@@ -23,7 +23,7 @@ private final class Event: UIEvent {
             func action(_ id: String) -> TVAuxiliaryPager.Action {
                 .init(symbol: "house", label: id, identifier: id) { commands.append(id) }
             }
-            view.configure(TVAuxiliaryPager(pages: [[action("back"), action("home")], [action("directions"), action("mode")]],
+            view.configure(TVAuxiliaryPager(pages: [[action("back"), action("home")], [action("directions"), action("mode")], [action("youtube"), action("netflix")]],
                                             identity: identity, layout: TVAuxiliaryLayout(cardWidth: 320), interactionEnabled: true,
                                             control: control, onInteractionBegan: {}))
             view.frame = CGRect(x: 0, y: 0, width: 88, height: 56); view.layoutIfNeeded()
@@ -41,6 +41,11 @@ private final class Event: UIEvent {
         configure("tvA")
         check("returning to original device does not revive cached AX action", !oldBack.accessibilityActivate() && commands == ["back"])
         check("current native action remains usable", element(1).accessibilityActivate() && commands == ["back", "home"])
+        check("third local page exposes the TV app shortcuts", view.accessibilityScroll(.left) && view.accessibilityScroll(.left) && element(0).accessibilityIdentifier == "youtube" && element(1).accessibilityIdentifier == "netflix")
+        let oldYouTube = element(0)
+        check("YouTube quick action uses its own action", oldYouTube.accessibilityActivate() && commands.last == "youtube")
+        check("returning to navigation page invalidates cached launch action", view.accessibilityScroll(.right) && !oldYouTube.accessibilityActivate())
+        check("Back and Home remain the initial page", view.accessibilityScroll(.right) && element(0).accessibilityIdentifier == "back")
         let before = commands
         let toolbarFinger = Touch(), otherFinger = Touch(), event = Event()
         event.contacts = [toolbarFinger]

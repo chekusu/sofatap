@@ -57,7 +57,7 @@ PY
 mkdir "$INTEROP_STAGE/classes"
 INTEROP_SOURCE="$REPO_ROOT/android/receiver/src/main/java/com/chekusu/sofatap/tv"
 "$INTEROP_JAVAC" -J-Xmx128m --release 17 -cp "$INTEROP_CLASSPATH" -d "$INTEROP_STAGE/classes" \
-    "$INTEROP_SOURCE/WebSocketCodec.java" "$INTEROP_SOURCE/TVProtocol.java" \
+    "$INTEROP_SOURCE/WebSocketCodec.java" "$INTEROP_SOURCE/TVProtocol.java" "$INTEROP_SOURCE/TVAppShortcuts.java" \
     "$INTEROP_SOURCE/PairingAuthority.java" "$INTEROP_SOURCE/ReceiverServer.java" \
     "$INTEROP_SOURCE/ReceiverCertificate.java" \
     "$REPO_ROOT/android/receiver/src/test/java/com/chekusu/sofatap/tv/AndroidTVInteropFixture.java"

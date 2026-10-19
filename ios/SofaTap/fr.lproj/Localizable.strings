@@ -452,3 +452,10 @@
 "电视快捷操作" = "Commandes rapides du téléviseur";
 "左右滑动切换操作" = "Balayez vers la gauche ou la droite pour changer de commandes";
 "操作页 %1$d，共 %2$d 页" = "Page de commandes %1$d sur %2$d";
+
+/* TV app shortcuts and delayed navigation. */
+"打开 YouTube" = "Ouvrir YouTube";
+"打开 Netflix" = "Ouvrir Netflix";
+"电视上未安装此应用。" = "Cette application n’est pas installée sur le téléviseur.";
+"电视未能打开此应用，请在电视上检查。" = "Le téléviseur n’a pas pu ouvrir cette application. Vérifiez le téléviseur.";
+"电视操作等待过久，请重新选择后确认。" = "La navigation sur le téléviseur a pris trop de temps. Sélectionnez à nouveau un élément avant de confirmer.";

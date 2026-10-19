@@ -159,6 +159,124 @@ private final class MemoryStore: AndroidTVPairingStorage {
             rig.controller.disconnect()
         }
         do {
+            var hello = Rig.hello()
+            hello["appShortcuts"] = ["schema": 1, "availableApps": ["youtube", "netflix"]]
+            guard case .hello(_, let parsed, _) = try AndroidTVProtocol.parse(encoded(hello)) else { preconditionFailure() }
+            check("app shortcuts remain separate from legacy controls", parsed.tvControls == nil && parsed.appShortcuts?.availableApps == [.youtube, .netflix])
+            for bad: [String: Any] in [["schema": true, "availableApps": ["youtube"]],
+                                      ["schema": 2, "availableApps": ["youtube"]],
+                                      ["schema": 1, "availableApps": ["youtube", "youtube"]],
+                                      ["schema": 1, "availableApps": ["https://example.com"]],
+                                      ["schema": 1, "availableApps": [42]]] {
+                hello["appShortcuts"] = bad
+                rejected("malformed shortcuts cannot enable a launch") { _ = try AndroidTVProtocol.parse(encoded(hello)) }
+            }
+            hello["appShortcuts"] = ["schema": 1, "availableApps": ["youtube", "future_app"]]
+            guard case .hello(_, let future, _) = try AndroidTVProtocol.parse(encoded(hello)) else { preconditionFailure() }
+            check("future app identifiers are ignored rather than executed", future.appShortcuts?.availableApps == [.youtube])
+            let launch = try AndroidTVProtocol.encode(.appLaunch(.netflix), id: UUID().uuidString)
+            let object = try JSONSerialization.jsonObject(with: Data(launch.utf8)) as! [String: Any]
+            check("launch carries only a fixed app identifier", object["type"] as? String == "app_launch" && object["app"] as? String == "netflix" && object.count == 3)
+        }
+        do {
+            let rig = Rig()
+            var state = extendedStatus(accessible: true)
+            state["appShortcuts"] = ["schema": 1, "availableApps": ["youtube", "netflix"]]
+            let socket = extendedReady(rig, state)
+            check("advertised TV apps can launch", rig.controller.canLaunchApp(.youtube) && rig.controller.canLaunchApp(.netflix))
+            check("launch accepted once", rig.controller.launchApp(.youtube) && socket.sent.count == 1 && socket.sent[0]["app"] as? String == "youtube")
+            check("launch has immediate discrete feedback", rig.controller.acceptedInputFeedback == 1)
+            socket.ack(0, extra: state)
+            _ = rig.controller.remoteKey(.right)
+            rig.controller.textDraft.text = "keep this on the phone"
+            _ = rig.controller.sendTextDraft()
+            _ = rig.controller.launchApp(.netflix)
+            socket.ack(1, extra: state)
+            check("app launch drops queued text for the old editor", socket.sent.count == 3 && socket.sent[2]["type"] as? String == "app_launch" && rig.controller.textDraft.text == "keep this on the phone" && !rig.controller.textCommandPending)
+            state["appShortcuts"] = ["schema": 1, "availableApps": ["youtube"]]
+            socket.ack(2, ok: false, extra: state.merging(["error": "app_not_installed"], uniquingKeysWith: { _, new in new }))
+            check("uninstalled app disables after fresh ACK and shows useful feedback", !rig.controller.canLaunchApp(.netflix) && rig.controller.canLaunchApp(.youtube) && rig.controller.inputFeedback == String(localized: "电视上未安装此应用。"))
+            rig.controller.pauseInput()
+            check("modal pause blocks app launch", !rig.controller.launchApp(.youtube))
+            rig.controller.disconnect()
+        }
+        do {
+            let legacy = Rig(), legacySocket = legacy.ready()
+            check("old receivers never receive app launch", !legacy.controller.launchApp(.youtube) && legacySocket.sent.isEmpty)
+            legacy.controller.disconnect()
+            let rig = Rig()
+            var state = extendedStatus(accessible: false)
+            state["appShortcuts"] = ["schema": 1, "availableApps": ["youtube"]]
+            let socket = extendedReady(rig, state)
+            check("installed shortcut still requires receiver control permission", !rig.controller.launchApp(.youtube) && socket.sent.isEmpty)
+            rig.controller.disconnect()
+        }
+        do {
+            let rig = Rig()
+            var state = extendedStatus(accessible: true)
+            state["appShortcuts"] = ["schema": 1, "availableApps": ["youtube"]]
+            let socket = extendedReady(rig, state)
+            _ = rig.controller.launchApp(.youtube)
+            socket.onFailure?(.transient)
+            rig.scheduled.last!.retry()
+            var hello = Rig.hello(token: nil); state.forEach { hello[$0.key] = $0.value }
+            let resumed = rig.sockets.last!; resumed.reply(hello)
+            check("unknown launch outcome never replays on reconnect", resumed.sent.isEmpty && rig.controller.canLaunchApp(.youtube))
+            rig.controller.disconnect()
+        }
+        do {
+            let rig = Rig()
+            var state = extendedStatus(accessible: true)
+            state["appShortcuts"] = ["schema": 1, "availableApps": ["youtube"]]
+            let socket = extendedReady(rig, state)
+            _ = rig.controller.launchApp(.youtube)
+            socket.ack(0, extra: extendedStatus(accessible: true))
+            check("launch ACK requires current shortcut capability", rig.controller.phase == .failed)
+            rig.controller.disconnect()
+        }
+        do {
+            let rig = Rig(), state = extendedStatus(), socket = extendedReady(rig, state)
+            var now = 100.0
+            rig.controller.testInputTime = { now }
+            _ = rig.controller.remoteKey(.right)
+            _ = rig.controller.remoteKey(.down)
+            _ = rig.controller.remoteKey(.confirm)
+            now += 0.6
+            socket.ack(0, extra: state)
+            check("expired direction also cancels dependent OK instead of opening old focus", socket.sent.count == 1 && rig.controller.rejectedInputFeedback == 1)
+            check("a later OK cannot revive the interrupted selection", !rig.controller.remoteKey(.confirm) && socket.sent.count == 1)
+            _ = rig.controller.remoteKey(.left)
+            _ = rig.controller.remoteKey(.confirm)
+            socket.ack(1, extra: state)
+            check("new deliberate navigation restores confirmation", socket.sent.count == 3 && socket.sent[1]["key"] as? String == "left" && socket.sent[2]["key"] as? String == "confirm")
+            rig.controller.disconnect()
+        }
+        for navigation in [AndroidTVKey.back, .home] {
+            let rig = Rig(), state = extendedStatus(), socket = extendedReady(rig, state)
+            var now = 100.0
+            rig.controller.testInputTime = { now }
+            _ = rig.controller.remoteKey(.right)
+            _ = rig.controller.remoteKey(.down)
+            _ = rig.controller.remoteKey(.confirm)
+            _ = rig.controller.remoteKey(navigation)
+            now += 0.6
+            socket.ack(0, extra: state)
+            check("Back and Home survive an expired direction and cancelled OK", socket.sent.count == 2 && socket.sent[1]["key"] as? String == navigation.rawValue)
+            rig.controller.disconnect()
+        }
+        do {
+            let rig = Rig(), state = extendedStatus(), socket = extendedReady(rig, state)
+            var now = 100.0
+            rig.controller.testInputTime = { now }
+            _ = rig.controller.remoteKey(.right)
+            _ = rig.controller.remoteKey(.down)
+            now += 0.6
+            check("OK added after queued direction expires is rejected immediately", !rig.controller.remoteKey(.confirm))
+            socket.ack(0, extra: state)
+            check("rejected late OK never reaches the wire", socket.sent.count == 1 && rig.controller.phase == .ready)
+            rig.controller.disconnect()
+        }
+        do {
             let rig = Rig(), state = extendedStatus(), socket = extendedReady(rig, state)
             rig.controller.textDraft.text = "potentially sent"
             _ = rig.controller.sendTextDraft()

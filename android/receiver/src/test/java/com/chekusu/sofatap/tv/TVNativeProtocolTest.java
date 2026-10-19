@@ -18,6 +18,16 @@ public class TVNativeProtocolTest {
         assertFalse(TVProtocol.parse(base("key").put("key", "confirm").toString()).extended());
         assertThrows(Exception.class, () -> TVProtocol.parse(base("remote_key").put("key", "power").toString()));
     }
+    @Test public void appShortcutsAcceptOnlyTwoStableIdsAndNoAndroidIntentFields() throws Exception {
+        for (String app : new String[]{"youtube", "netflix"}) {
+            TVProtocol.Action action = TVProtocol.parse(base("app_launch").put("app", app).toString());
+            assertTrue(action.extended()); assertEquals(app, action.app());
+            for (String field : new String[]{"package", "component", "url", "flags", "action"})
+                assertThrows(Exception.class, () -> TVProtocol.parse(base("app_launch").put("app", app).put(field, "untrusted").toString()));
+        }
+        for (String app : new String[]{"", "YouTube", "com.google.android.youtube.tv", "com.android.settings", "intent://youtube"})
+            assertThrows(Exception.class, () -> TVProtocol.parse(base("app_launch").put("app", app).toString()));
+    }
     @Test public void pairingOnlyAcceptsSixHexDigitsAndNoHostOrPort() throws Exception {
         assertTrue(TVProtocol.parse(base("remote_pair_start").toString()).extended());
         assertEquals("Ab12F0", TVProtocol.parse(base("remote_pair_code").put("code", "Ab12F0").toString()).code());

@@ -92,13 +92,16 @@ public final class AndroidTVInteropFixture {
                 capabilities.put(key, ready);
             for (String key : Arrays.asList("text", "rawMouse", "rightClick", "drag")) capabilities.put(key, false);
             return new JSONObject().put("inputAvailable", ready)
-                .put("inputStatus", ready ? "ready" : "accessibility_required").put("capabilities", capabilities);
+                .put("inputStatus", ready ? "ready" : "accessibility_required").put("capabilities", capabilities)
+                .put("appShortcuts", new JSONObject().put("schema", 1)
+                    .put("availableApps", ready ? new JSONArray().put("youtube").put("netflix") : new JSONArray()));
         }
         @Override public JSONObject apply(TVProtocol.Action action, BooleanSupplier current) throws Exception {
             if (!current.getAsBoolean() || Files.exists(directory.resolve("block-input")))
                 return new JSONObject().put("ok", false).put("code", "accessibility_required");
             JSONObject entry = new JSONObject().put("type", action.type()).put("dx", action.dx()).put("dy", action.dy());
             if (action.key() != null) entry.put("key", action.key());
+            if (action.app() != null) entry.put("app", action.app());
             synchronized (actions) { actions.add(entry); }
             if (Files.deleteIfExists(directory.resolve("hold-next-action"))) {
                 awaitingAck.set(true);

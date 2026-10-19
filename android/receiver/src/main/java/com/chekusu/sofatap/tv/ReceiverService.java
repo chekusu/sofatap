@@ -141,6 +141,7 @@ public final class ReceiverService extends Service {
                             return onMain(() -> {
                                 if (stopped || !current.getAsBoolean()) return new JSONObject().put("ok", false).put("code", "session_ended");
                                 if (action.type().startsWith("text_")) return SofatapInputMethodService.apply(ReceiverService.this, action, current);
+                                if (action.type().equals("app_launch")) return InputBridge.launchApp(action.app(), current);
                                 String kind = action.type();
                                 if (kind.equals("key")) {
                                     kind = action.key();
@@ -184,7 +185,8 @@ public final class ReceiverService extends Service {
         if (controller != null) controller.ensureConnected();
         JSONObject controls = SofatapInputMethodService.snapshot(this).put("version", 1)
             .put("navigationStatus", controller == null ? "unavailable" : controller.status());
-        return legacy.put("tvControls", controls);
+        // Separate optional extension: existing iPhone builds strictly parse tvControls.
+        return legacy.put("tvControls", controls).put("appShortcuts", InputBridge.appShortcuts());
     }
     String navigationStatus() { RemoteV2Client value = remote; return value == null ? "unavailable" : value.status(); }
     private synchronized void closeRuntime() {
