@@ -140,6 +140,28 @@ class PackageValidationTest(unittest.TestCase):
                 PACKAGE.exclusive_write(file, b"second")
             self.assertEqual(b"first", file.read_bytes())
 
+    def test_apksigner_reads_single_line_password_source_only_once(self):
+        with patch.object(PACKAGE.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, b"", b"")) as execute:
+            PACKAGE.sign_apk(Path("/fixture/build-tools"), Path("aligned.apk"), Path("signed.apk"), {})
+        arguments = execute.call_args.args[0]
+        sources = [value for value in arguments if value.startswith("file:")]
+        self.assertEqual(["file:" + str(PACKAGE.KEY_DIRECTORY / PACKAGE.PASSWORD_NAME)], sources)
+        self.assertEqual("PKCS12", arguments[arguments.index("--ks-type") + 1])
+        self.assertNotIn("--key-pass", arguments)
+        self.assertEqual(subprocess.DEVNULL, execute.call_args.kwargs["stdin"])
+
+    def test_subprocess_cannot_wait_for_interactive_password(self):
+        # Exercise run's real subprocess boundary without keys or signing tools.
+        output = PACKAGE.run([PACKAGE.sys.executable, "-c", "import sys; print(len(sys.stdin.buffer.read()))"])
+        self.assertEqual(b"0\n", output)
+
+    def test_signing_failure_never_exposes_tool_diagnostics(self):
+        result = subprocess.CompletedProcess([], 2, b"private output fixture", b"private error fixture")
+        with patch.object(PACKAGE.subprocess, "run", return_value=result):
+            with self.assertRaises(PACKAGE.ReleaseError) as caught:
+                PACKAGE.sign_apk(Path("/fixture/build-tools"), Path("aligned.apk"), Path("signed.apk"), {})
+        self.assertEqual("apksigner failed (exit 2); no output published.", str(caught.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

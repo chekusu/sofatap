@@ -44,7 +44,8 @@ def run(command, *, cwd=None, environment=None):
     # Never echo a command or subprocess diagnostics: signing tools may include
     # private paths and credential details in errors. Passwords are file arguments.
     result = subprocess.run([str(value) for value in command], cwd=cwd, env=environment,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, check=False)
     require(result.returncode == 0, f"{Path(command[0]).name} failed (exit {result.returncode}); no output published.")
     return result.stdout
 
@@ -248,6 +249,19 @@ def sdk_tools(configured):
     return selected
 
 
+def sign_apk(tools, aligned, signed, environment):
+    # This PKCS12 identity uses the same store and key password. apksigner reads
+    # repeated file: sources one line at a time, so providing the same single-line
+    # file for --key-pass would consume EOF. Omit it to reuse the store password.
+    # run() closes stdin so an unexpected key mismatch fails without prompting.
+    password = "file:" + str(KEY_DIRECTORY / PASSWORD_NAME)
+    run([tools / "apksigner", "sign", "--ks", KEY_DIRECTORY / KEY_NAME,
+         "--ks-type", "PKCS12", "--ks-key-alias", KEY_ALIAS, "--ks-pass", password,
+         "--v1-signing-enabled", "true", "--v2-signing-enabled", "true",
+         "--v3-signing-enabled", "true", "--v4-signing-enabled", "false",
+         "--out", signed, aligned], environment=environment)
+
+
 def package(args, keytool, environment):
     root = Path(__file__).resolve().parent.parent
     source = verified_commit(root, args.source_commit)
@@ -273,11 +287,7 @@ def package(args, keytool, environment):
         aligned, signed = stage / "aligned.apk", stage / filename
         input_hash = digest(apk)
         run([tools / "zipalign", "-P", "16", "4", apk, aligned], environment=environment)
-        password = "file:" + str(KEY_DIRECTORY / PASSWORD_NAME)
-        run([tools / "apksigner", "sign", "--ks", KEY_DIRECTORY / KEY_NAME, "--ks-key-alias", KEY_ALIAS,
-             "--ks-pass", password, "--key-pass", password, "--v1-signing-enabled", "true",
-             "--v2-signing-enabled", "true", "--v3-signing-enabled", "true", "--v4-signing-enabled", "false",
-             "--out", signed, aligned], environment=environment)
+        sign_apk(tools, aligned, signed, environment)
         verification = run([tools / "apksigner", "verify", "--verbose", "--print-certs", signed], environment=environment).decode("utf-8")
         signers = re.findall(r"^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$", verification, re.MULTILINE)
         require(len(signers) == 1 and signers[0].lower() == fingerprint, "Signed APK does not match the persistent controller identity.")
