@@ -1,0 +1,80 @@
+{
+  "normalization": "Line endings normalized to LF; trailing whitespace removed. License wording retained.",
+  "artifacts": [
+    {
+      "file": "OKHTTP-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/square/okhttp/parent-4.12.0/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "OKIO-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/square/okio/parent-3.6.0/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "ZXING-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/zxing/zxing/zxing-3.5.3/LICENSE",
+      "sha256": "849b3ff4527ff587eecc78736b5685bbba7a44b071f3b944da914e832292f6c0"
+    },
+    {
+      "file": "ZXING-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/zxing/zxing/zxing-3.5.3/NOTICE",
+      "sha256": "4db4b60aace29ec6c5c4f13ca9cac1930d3c0c54bcc67dceead0c10771120e66"
+    },
+    {
+      "file": "KOTLIN-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v1.9.10/license/LICENSE.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "KOTLIN-NOTICE.txt",
+      "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v1.9.10/license/NOTICE.txt",
+      "sha256": "ea7099352103ade6a6918bc7efb00f8bcd43db0e76b2da2e83237c0bc0ff1b19"
+    },
+    {
+      "file": "KOTLIN-COPYRIGHT.txt",
+      "source": "https://raw.githubusercontent.com/JetBrains/kotlin/v1.9.10/license/COPYRIGHT.txt",
+      "sha256": "74ac3f60f19f7a88510f72d59f70b03b6a91c025364aa921e1b0df2058bd0017"
+    },
+    {
+      "file": "JETBRAINS-ANNOTATIONS-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/JetBrains/java-annotations/master/LICENSE.txt",
+      "sha256": "8c1e966c7855fb54027bcaf6ebe7a43abe4785791e8cf9148c363761d493d097"
+    },
+    {
+      "file": "MOZILLA-PUBLIC-SUFFIX-LIST-LICENSE.txt",
+      "source": "https://www.mozilla.org/media/MPL/2.0/index.txt",
+      "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04"
+    },
+    {
+      "file": "DESUGAR-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/google/desugar_jdk_libs/73170c345e6a762fc6a1f0301bb15218850023ef/LICENSE",
+      "sha256": "4b9abebc4338048a7c2dc184e9f800deb349366bdf28eb23c2677a77b4c87726"
+    },
+    {
+      "file": "DESUGAR-ASSEMBLY-EXCEPTION.txt",
+      "source": "https://raw.githubusercontent.com/google/desugar_jdk_libs/73170c345e6a762fc6a1f0301bb15218850023ef/ASSEMBLY_EXCEPTION",
+      "sha256": "a44eb7b5caf5534c6ef536b21edb40b4d6babf91bf97d9d45596868618b2c6fb"
+    },
+    {
+      "file": "DESUGAR-ADDITIONAL-LICENSE-INFO.txt",
+      "source": "https://raw.githubusercontent.com/google/desugar_jdk_libs/73170c345e6a762fc6a1f0301bb15218850023ef/ADDITIONAL_LICENSE_INFO",
+      "sha256": "69369283a3e40c098832bf4fd4fe38c7b780679a2a58d8f32fa892f639ed8424"
+    },
+    {
+      "file": "MOZILLA-PUBLIC-SUFFIX-LIST-NOTICE.txt",
+      "source": "com.squareup.okhttp3:okhttp:4.12.0!/okhttp3/internal/publicsuffix/NOTICE",
+      "sha256": "8a9c58fbded5ea3474315e4a9824ca8b1486098a1a03e897e0b19419d5e1876a"
+    },
+    {
+      "file": "ZXING-ANDROID-EMBEDDED-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/journeyapps/zxing-android-embedded/v4.3.0/COPYING",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "file": "ANDROIDX-LICENSE.txt",
+      "source": "https://raw.githubusercontent.com/androidx/androidx/androidx-main/LICENSE.txt",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+    }
+  ]
+}

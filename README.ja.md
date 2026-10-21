@@ -66,10 +66,15 @@ TestFlight ビルド 15 はデバイス管理と、公式サイトと同じ 12 �
 
 ビルド 18 では、タッチ領域の歯車から Sofatap、トラックパッド操作、長押しショートカットのプリセットを選び、タップ、左右のダブルタップ、2本指・3本指タップ、長押し、スライドに操作を割り当てられます。パソコン用とテレビ用の設定は iPhone 内に別々に保存されます。判定時間やスクロール方向の調整、プリセットへの復元、オフラインの練習も可能です。テレビの操作候補は受信アプリの対応機能に制限されます。[設定と検証範囲](docs/GESTURES.md)を参照してください。公開 TestFlight 1.0 (18) で利用できます。専用 iPhone と iPad で設定・ローカル練習の実機テストに合格しました。受信側での実操作は別途検証が必要です。
 
+## Android スマートフォン向けプレビュー
+
+ネイティブの **Android スマートフォン／タブレット用コントローラー alpha** を [`android/controller`](android/controller/README.md) に追加しました。テレビに入れる受信アプリとは別のアプリです。パソコンと Android/Google TV の受信アプリをペアリングし、固定ジェスチャー、保存済みデバイス、確認後の文字送信、端末の音声認識サービスを利用できます。Android 8.0 以降が対象で、現在は英語・簡体字中国語・日本語に対応します。入力欄全体のリアルタイム編集、ジェスチャー設定、ロック解除、LG webOS は未対応です。Android スマートフォン実機での受け入れ確認は未完了で、Google Play 公開版ではありません。[ビルド・設定・制限](android/controller/README.md)をご確認ください。
+
 ## プラットフォーム別の状況
 
 | プラットフォーム | 現在の状況 |
 | --- | --- |
+| Android スマートフォン／タブレット | 開発 alpha、Android 8.0 以降。パソコンと Android/Google TV を操作するクライアントのソースです。スマートフォン実機での受け入れ確認とストア配布は未完了です。[ビルドガイド](android/controller/README.md)。 |
 | iPhone | iOS 17 以降。公開版 1.0 (22) は 12 言語に対応し、[公開 TestFlight](https://testflight.apple.com/join/e6MuKx9S)で配布中です。専用テスト用 iPhone への TestFlight 経由のビルド 16 のインストールを確認しました。最終ビルドでの Windows 再起動後の復帰と入力検証は未完了です。過去のカメラ読み取りや入力検証は、実際に試した版を [0.7.1 の記録](docs/verification/receiver-0.7.1.md)と[ビルド 16 の開発検証記録](docs/verification/input-1.0-16.md)に明記しています。 |
 | Windows | 受信アプリ 0.8.1 beta.1 を公開済み。Edit/RichEdit のリアルタイム編集に対応します。以前の RichEdit キーボード操作は限定実機確認済みで、追加項目と今回の再起動後の復帰は未検証です。Windows バイナリに Authenticode 署名はありません。 |
 | Mac | macOS 15 以降。0.8.1 beta.1 の Apple Silicon・Intel 両パッケージを署名・公証済みで、署名付き Sparkle 更新フィードを提供します。以前の Apple Silicon 入力を一部確認していますが、現在のリアルタイム編集と Intel の入力は実機検証が必要です。 |
@@ -167,6 +172,8 @@ Host runner は模擬入力を使います。TLS/WebSocket の確認は一時的
 | パス | 内容 |
 | --- | --- |
 | `ios/` | ネイティブ iPhone アプリ、Xcode プロジェクト、プロジェクト生成設定 |
+| `android/controller/` | ネイティブ Android スマートフォン／タブレット用コントローラー alpha |
+| `android/receiver/` | 実験的な Android/Google TV 受信アプリ |
 | `host/` | 共通受信プロトコル、Windows/Mac 入力バックエンド、Linux worker へのブリッジ |
 | `desktop/` | ネイティブのペアリングウインドウと Linux 入力 worker |
 | `tests/` | プロトコル、認証、入力境界の確認 |

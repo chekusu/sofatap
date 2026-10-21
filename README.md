@@ -66,10 +66,15 @@ In build 16, keyboard Backspace edits an unsent fallback draft locally. After cl
 
 Build 18 adds a gear button on the touchpad. Choose Sofatap, Trackpad habits or Press for shortcuts, then assign actions to taps, left/right double-taps, two/three-finger taps, holds and slides. Computer and TV preferences are saved separately on the iPhone. Adjust timing and scroll direction, restore a preset, or try gestures in the offline practice pad. TV choices are limited to the receiver’s capabilities. See [gesture settings](docs/GESTURES.md) for details and validation limits. Available in public TestFlight 1.0 (18). Physical settings and local-practice checks passed on the dedicated iPhone and iPad; receiver effects remain separately qualified.
 
+## Android phone preview
+
+A native **Android phone/tablet controller alpha** now lives in [`android/controller`](android/controller/README.md), separate from the TV receiver. It pairs with computer and Android/Google TV receivers, offers fixed mouse/TV gestures, saved devices and explicit text sending, and can use the installed system speech service. It requires Android 8.0+ and currently includes English, Simplified Chinese and Japanese. Full-field live editing, custom gestures, unlock and LG webOS are not included. Physical Android handset acceptance remains pending; this is a development build, not a Google Play release. See the [build, setup and limitations](android/controller/README.md).
+
 ## Platform status
 
 | Platform | Current status |
 | --- | --- |
+| Android phone / tablet | Development alpha, Android 8.0+. Computer and Android/Google TV controller source; physical handset acceptance and store distribution remain pending. [Build guide](android/controller/README.md). |
 | iPhone | iOS 17+. Public version 1.0 (22) supports 12 interface languages and is available in [public TestFlight](https://testflight.apple.com/join/e6MuKx9S). TestFlight installation of build 16 on the dedicated test iPhone is verified; final-build Windows restart and input acceptance remain pending. Earlier camera pairing and input checks retain their actual tested versions in the [0.7.1 record](docs/verification/receiver-0.7.1.md) and [build 16 development record](docs/verification/input-1.0-16.md). |
 | Windows | Receiver 0.8.1 beta.1 is available with native Edit/RichEdit live editing. Earlier scoped physical RichEdit keyboard checks passed; further device cases and current restart acceptance remain pending. Windows binaries are not Authenticode-signed. |
 | Mac | macOS 15+. Receiver 0.8.1 beta.1 Apple Silicon and Intel packages are signed and notarized, with signed Sparkle update feeds. Earlier scoped Apple Silicon input checks passed; current live editing and Intel input still need physical acceptance. |
@@ -167,6 +172,8 @@ Build, protocol, virtual-desktop and physical-device checks establish different 
 | Path | Contents |
 | --- | --- |
 | `ios/` | Native iPhone app, Xcode project and project-generation configuration |
+| `android/controller/` | Native Android phone/tablet controller alpha |
+| `android/receiver/` | Experimental Android/Google TV receiver |
 | `host/` | Shared receiver protocol, Windows/Mac input backends and Linux worker bridge |
 | `desktop/` | Native pairing windows and Linux input workers |
 | `tests/` | Protocol, authentication and input-boundary checks |

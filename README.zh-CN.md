@@ -66,10 +66,15 @@ TestFlight 构建 15 已包含设备管理，并对齐官网的 12 种语言：�
 
 构建 18 在触控区新增齿轮入口。可以选择 Sofatap、触控板习惯或长按快捷操作预设，再为单击、左右区双击、双指/三指轻点、长按与滑动分别指定动作。电脑与电视的偏好在 iPhone 上独立保存；可以调整判定时间和滚动方向、恢复预设，或在离线练习区试用。电视可选动作受接收端能力限制。详情和验证范围见[手势设置说明](docs/GESTURES.md)。此功能已通过公开 TestFlight 1.0 (18) 提供。已在专用 iPhone 和 iPad 上通过设置与本地练习测试；接收端实际效果仍需单独验收。
 
+## 安卓手机预览版
+
+新增原生 **Android 手机／平板控制端 alpha**，源码位于 [`android/controller`](android/controller/README.md)，与安装在电视上的接收器分开。可以配对电脑及 Android/Google TV 接收器，提供固定鼠标／电视手势、已存设备管理和确认后发送文字，并可调用已安装的系统语音服务。要求 Android 8.0+，目前提供中、英、日三种语言。暂不包括整段实时编辑、自定义手势、解锁和 LG webOS；安卓手机真机验收仍待完成。这是开发版本，尚未发布到 Google Play。参见[编译、设置和限制](android/controller/README.md)。
+
 ## 平台进度
 
 | 平台 | 当前状态 |
 | --- | --- |
+| Android 手机／平板 | 开发 alpha，Android 8.0+。提供控制电脑及 Android/Google TV 的客户端源码；安卓手机真机验收和商店分发仍待完成。[编译指南](android/controller/README.md)。 |
 | iPhone | iOS 17+。公开版 1.0 (22) 支持 12 种界面语言，可通过[公开 TestFlight](https://testflight.apple.com/join/e6MuKx9S)安装。已确认通过 TestFlight 将构建 16 安装到专用测试 iPhone；最终构建的 Windows 重启恢复与输入验收仍待完成。此前扫码和输入检查仍按实际测试版本记录在 [0.7.1 验证记录](docs/verification/receiver-0.7.1.md)与[构建 16 开发测试记录](docs/verification/input-1.0-16.md)中。 |
 | Windows | 接收器 0.8.1 beta.1 已发布，支持原生 Edit/RichEdit 实时编辑。此前限定 RichEdit 真机键盘验收已通过，其他设备项目与本次重启恢复实测仍待完成。Windows 程序尚无 Authenticode 签名。 |
 | Mac | macOS 15+。0.8.1 beta.1 的 Apple Silicon 和 Intel 包均已签名、公证，并提供签名 Sparkle 更新源。此前 Apple Silicon 完成部分输入验收；当前实时编辑及 Intel 输入仍待真机验收。 |
@@ -167,6 +172,8 @@ Host runner 使用模拟输入器。TLS/WebSocket 检查以 `--dry-run` 启动�
 | 路径 | 内容 |
 | --- | --- |
 | `ios/` | 原生 iPhone App、Xcode 工程和工程生成配置 |
+| `android/controller/` | 原生 Android 手机／平板控制端 alpha |
+| `android/receiver/` | 实验性 Android/Google TV 接收器 |
 | `host/` | 共用接收协议、Windows/Mac 输入后端和 Linux worker 桥接 |
 | `desktop/` | 原生配对窗口和 Linux 输入 worker |
 | `tests/` | 协议、认证和输入边界检查 |
