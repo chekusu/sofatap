@@ -68,6 +68,8 @@ public class ControllerDeviceTest {
     private MockWebServer server;
     private String pairedIdentity;
     private boolean liveFixture;
+    private boolean holdLiveBegin;
+    private final AtomicReference<Runnable> delayedLiveBeginAck=new AtomicReference<>();
     private android.content.SharedPreferences gesturePrefs;
     private String previousGestureProfiles;
     private final AtomicReference<String> remoteText = new AtomicReference<>("Hello 🌍 world");
@@ -144,6 +146,83 @@ public class ControllerDeviceTest {
         // Recreating also exercises saved-state restoration, not only configChanges handling.
         scenario.recreate();
         scenario.onActivity(a -> assertEquals("保留草稿 · 日本語 · 🎮", a.editor.getText().toString()));
+    }
+
+    @Test public void unavailableDictationOpensKeyboardAndPreservesDraftSelection() throws Exception {
+        int permissionBefore=instrumentation.getTargetContext().checkSelfPermission(Manifest.permission.RECORD_AUDIO);
+        scenario.onActivity(a->{
+            useUnavailableSpeech(a);
+            a.editor.setText("保留 draft 🎮");a.editor.setSelection(3,8);
+        });
+        await("keyboard starts hidden",()->mainBoolean(a->!imeVisible(a)));
+        clickMainDescription(R.string.dictate);
+        await("missing provider opens the current keyboard",()->mainBoolean(ControllerDeviceTest::imeVisible));
+        scenario.onActivity(a->{
+            assertEquals("保留 draft 🎮",a.editor.getText().toString());
+            assertEquals(3,a.editor.getSelectionStart());assertEquals(8,a.editor.getSelectionEnd());
+            assertTrue("keyboard editing stays enabled",a.editor.isEnabled());
+            assertNotNull("mic is not falsely recording",findDescription(a.getWindow().getDecorView(),a.getString(R.string.dictate)));
+            assertEquals("fallback does not change microphone permission",permissionBefore,a.checkSelfPermission(Manifest.permission.RECORD_AUDIO));
+        });
+    }
+
+    @Test public void missingSpeechWaitsForLiveImportWithoutFocusMetadata() throws Exception {
+        beginMissingSpeechWithDelayedImport();
+        delayedLiveBeginAck.getAndSet(null).run();
+        await("explicit keyboard appears after unknown-focus import",()->mainBoolean(a->a.session.liveText.ready()&&imeVisible(a)));
+        scenario.onActivity(a->{
+            assertEquals("unknown",a.session.status.focusState);
+            assertEquals("Hello 🌍 world",a.editor.getText().toString());
+            assertEquals(6,a.editor.getSelectionStart());assertEquals(8,a.editor.getSelectionEnd());
+        });
+        clickMainDescription(R.string.hide_keyboard);
+        await("explicit keyboard can be dismissed",()->mainBoolean(a->!imeVisible(a)));
+        scenario.onActivity(a->assertTrue(a.session.send(WireActions.ping(),null)));
+        SystemClock.sleep(1000);
+        assertFalse("the completed request does not reopen the keyboard",mainBoolean(ControllerDeviceTest::imeVisible));
+    }
+
+    @Test public void backgroundingCancelsMissingSpeechKeyboardRequest() throws Exception {
+        beginMissingSpeechWithDelayedImport();
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED);
+        delayedLiveBeginAck.getAndSet(null).run();
+        await("import reply while paused",()->mainBoolean(a->a.session.liveText.ready()));
+        scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED);
+        SystemClock.sleep(1000);
+        assertFalse("old explicit request is not replayed after foregrounding",mainBoolean(ControllerDeviceTest::imeVisible));
+    }
+
+    @Test public void changingDeviceCancelsMissingSpeechKeyboardRequest() throws Exception {
+        String original=beginMissingSpeechWithDelayedImport();
+        String other=original.replaceFirst("fingerprint=[0-9a-f]{64}","fingerprint="+"f".repeat(64));
+        scenario.onActivity(a->a.pair(other));
+        delayedLiveBeginAck.getAndSet(null).run();
+        SystemClock.sleep(1000);
+        scenario.onActivity(a->assertEquals("f".repeat(64),a.session.pairing.fingerprint));
+        assertFalse("the old device cannot reopen the keyboard",mainBoolean(ControllerDeviceTest::imeVisible));
+    }
+
+    private String beginMissingSpeechWithDelayedImport() throws Exception {
+        liveFixture=true;holdLiveBegin=true;
+        String uri=startDesktopReceiver();
+        fixtureHello.get().getJSONObject("textFocus").put("state","unknown");
+        scenario.onActivity(a->{useUnavailableSpeech(a);a.pair(uri);});
+        await("unknown-focus receiver connects",()->mainBoolean(a->a.session.connected()));
+        await("keyboard is initially hidden",()->mainBoolean(a->!imeVisible(a)));
+        clickMainDescription(R.string.dictate);
+        await("live import waits for delayed ACK",()->delayedLiveBeginAck.get()!=null&&mainBoolean(a->a.session.liveText.state()==LiveTextEditor.State.STARTING));
+        assertFalse("keyboard waits for the imported editor",mainBoolean(ControllerDeviceTest::imeVisible));
+        return uri;
+    }
+
+    private static void useUnavailableSpeech(MainActivity activity){
+        try{
+            java.lang.reflect.Field field=MainActivity.class.getDeclaredField("dictation");field.setAccessible(true);
+            field.set(activity,new DictationSession(activity,new DictationSession.Availability(){
+                public boolean system(){return false;}
+                public boolean onDevice(){return false;}
+            }));
+        }catch(ReflectiveOperationException failure){throw new AssertionError(failure);}
     }
 
     @Test public void dialogsPairOverTlsAndSendConsecutiveUnicodeDrafts() throws Exception {
@@ -398,7 +477,8 @@ public class ControllerDeviceTest {
                     JSONObject status = statusOnAck.get();
                     if(status!=null) for(String key : new String[]{"inputAvailable","inputStatus","dryRun","capabilities","tvControls","textFocus"})
                         if(status.has(key)) ack.put(key,status.get(key));
-                    socket.send(ack.toString());
+                    if(holdLiveBegin&&"textBegin".equals(action.optString("type")))delayedLiveBeginAck.set(()->socket.send(ack.toString()));
+                    else socket.send(ack.toString());
                 } catch (Exception bad) { throw new AssertionError(bad); }
             }
         });

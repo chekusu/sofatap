@@ -46,7 +46,9 @@ When live editing is unavailable, compose a local draft and tap the arrow to sen
 
 ### Dictation
 
-Tap the microphone to start foreground dictation and tap again to finish, or assign **Start or stop dictation** to a computer gesture. Sofatap requests partial results from the installed Android speech provider. Results update the editor as that provider supplies them; they synchronize to a supported live computer field, while fallback drafts and TV text still require Send. Recognition availability, partial-result frequency, network use and audio handling depend on the provider. On-device recognition and continuously delivered partial results are not guaranteed. Your keyboard's own dictation button is another option. Leaving the app cancels its recording session.
+Tap the microphone to start available foreground dictation and tap again to finish, or assign **Start or stop dictation** to a computer gesture. Sofatap uses the standard Android speech recognizer when available. If it is unavailable, Android 12 / API 31 and later try supported on-device recognition. These paths require Sofatap microphone permission and request partial results. Results update the editor as the recognizer supplies them; they synchronize to a supported live computer field, while fallback drafts and TV text still require Send. Recognition availability and partial-result frequency depend on the recognizer. The standard provider may process audio online. Leaving the app cancels Sofatap’s own recording session.
+
+If neither recognizer is available, tapping Sofatap’s microphone opens the current keyboard and prompts you to tap that keyboard’s own microphone, if it provides one. Sofatap cannot automatically start keyboard dictation. This fallback does not request Sofatap microphone permission; recording permissions, recognition availability and audio handling are controlled by the keyboard. Its committed text follows the same live-editing or explicit-Send rules as ordinary keyboard input.
 
 ## TV controls
 
