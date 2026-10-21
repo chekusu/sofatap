@@ -66,15 +66,17 @@ TestFlight 构建 15 已包含设备管理，并对齐官网的 12 种语言：�
 
 构建 18 在触控区新增齿轮入口。可以选择 Sofatap、触控板习惯或长按快捷操作预设，再为单击、左右区双击、双指/三指轻点、长按与滑动分别指定动作。电脑与电视的偏好在 iPhone 上独立保存；可以调整判定时间和滚动方向、恢复预设，或在离线练习区试用。电视可选动作受接收端能力限制。详情和验证范围见[手势设置说明](docs/GESTURES.md)。此功能已通过公开 TestFlight 1.0 (18) 提供。已在专用 iPhone 和 iPad 上通过设置与本地练习测试；接收端实际效果仍需单独验收。
 
-## 安卓手机预览版
+## 安卓手机版本
 
-新增原生 **Android 手机／平板控制端 alpha**，源码位于 [`android/controller`](android/controller/README.md)，与安装在电视上的接收器分开。可以配对电脑及 Android/Google TV 接收器，提供固定鼠标／电视手势、已存设备管理和确认后发送文字，并可调用已安装的系统语音服务。要求 Android 8.0+，目前提供中、英、日三种语言。暂不包括整段实时编辑、自定义手势、解锁和 LG webOS；安卓手机真机验收仍待完成。这是开发版本，尚未发布到 Google Play。参见[编译、设置和限制](android/controller/README.md)。
+原生 **Android 手机／平板控制端 0.1.0-beta.1** 位于 [`android/controller`](android/controller/README.md)，与电视接收器分开。要求 Android 8.0+，提供中、英、日三种语言。支持配对与设备管理、电脑和电视独立的手势配置、三套预设及本地练习；电脑接收器和输入框支持时，文字、选区与删除实时同步。其他电脑输入框及电视文字保留明确发送。前台听写向已安装的系统语音服务请求中间识别结果，结果频率、可用性及音频处理方式取决于该服务。
+
+直接 APK 测试版：[版本说明](https://github.com/chekusu/sofatap/releases/tag/android-controller-v0.1.0-beta.1) · [Sofatap-Android-0.1.0-beta.1.apk](https://github.com/chekusu/sofatap/releases/download/android-controller-v0.1.0-beta.1/Sofatap-Android-0.1.0-beta.1.apk)。此版本未上架 Google Play，也没有自动更新器。公开安装包标识为 `com.chekusu.sofatap`，开发包为 `com.chekusu.sofatap.dev`。真机验收另行记录，不能由源码或模拟器检查推断。参见[安装、输入限制与验证说明](android/controller/README.md)。
 
 ## 平台进度
 
 | 平台 | 当前状态 |
 | --- | --- |
-| Android 手机／平板 | 开发 alpha，Android 8.0+。提供控制电脑及 Android/Google TV 的客户端源码；安卓手机真机验收和商店分发仍待完成。[编译指南](android/controller/README.md)。 |
+| Android 手机／平板 | **0.1.0-beta.1 预发布版**，Android 8.0+。自定义手势、受支持的电脑实时编辑、电视明确发送及依赖系统服务的听写。直接 APK 分发，无 Google Play 或自动更新器。[设置与验收范围](android/controller/README.md)。 |
 | iPhone | iOS 17+。公开版 1.0 (22) 支持 12 种界面语言，可通过[公开 TestFlight](https://testflight.apple.com/join/e6MuKx9S)安装。已确认通过 TestFlight 将构建 16 安装到专用测试 iPhone；最终构建的 Windows 重启恢复与输入验收仍待完成。此前扫码和输入检查仍按实际测试版本记录在 [0.7.1 验证记录](docs/verification/receiver-0.7.1.md)与[构建 16 开发测试记录](docs/verification/input-1.0-16.md)中。 |
 | Windows | 接收器 0.8.1 beta.1 已发布，支持原生 Edit/RichEdit 实时编辑。此前限定 RichEdit 真机键盘验收已通过，其他设备项目与本次重启恢复实测仍待完成。Windows 程序尚无 Authenticode 签名。 |
 | Mac | macOS 15+。0.8.1 beta.1 的 Apple Silicon 和 Intel 包均已签名、公证，并提供签名 Sparkle 更新源。此前 Apple Silicon 完成部分输入验收；当前实时编辑及 Intel 输入仍待真机验收。 |
@@ -109,7 +111,9 @@ TestFlight 构建 15 已包含设备管理，并对齐官网的 12 种语言：�
 
 Sofatap 通过局域网直接连接，项目没有云中继服务。配对使用固定证书校验；凭据保存在 iPhone Keychain、Windows DPAPI 或 Mac/Linux 上仅当前用户可读的接收端文件中。Mac 输入需要辅助功能权限，Wayland 输入需要用户明确授予 portal 权限。
 
-麦克风仅在明确点击并取得所需权限后启动。受支持的本机识别将音频保留在手机上；Sofatap 不上传音频，也不静默切换到云端识别。实时编辑时，识别过程中的文字和后续修正会同步到电脑；回退的草稿模式仍需点**发送**。系统听写和第三方输入法有各自的数据处理方式。
+iPhone App 的麦克风仅在明确点击或使用已配置的听写手势，并取得所需权限后启动。受支持的本机识别将音频保留在手机上；iPhone App 不上传音频，也不静默切换到云端识别。实时编辑时，识别过程中的文字和后续修正会同步到电脑；回退的草稿模式仍需点**发送**。系统听写和第三方输入法有各自的数据处理方式。
+
+Android 听写在明确点击麦克风或使用已配置的手势、授予麦克风权限后，调用已安装的语音服务。该服务可能在线处理音频，不能保证本机识别。Sofatap 请求中间识别结果，并在退出前台时取消自身的录音会话。参见 [Android 听写与隐私说明](android/controller/README.md#dictation)。
 
 实时编辑通过固定证书校验的 TLS，把当前受支持输入框的完整文字及选区直接传到配对手机。导入的实时文字保留在手机内存中，不会自动保存为草稿。切换设备后，只有明确选择允许再次发送，才会把保留文字转为本地保存的检查后发送草稿；切换本身不会发送文字。接收端在当前连接的有界内存缓存中保留带文字的确认消息，用于防止重复编辑，连接结束后不再保留该缓存。独立的检查后发送草稿仍会保存在本机以便恢复。字段文字不记录日志、不发送到云服务；后台焦点提示仍只包含元数据。
 
@@ -172,7 +176,7 @@ Host runner 使用模拟输入器。TLS/WebSocket 检查以 `--dry-run` 启动�
 | 路径 | 内容 |
 | --- | --- |
 | `ios/` | 原生 iPhone App、Xcode 工程和工程生成配置 |
-| `android/controller/` | 原生 Android 手机／平板控制端 alpha |
+| `android/controller/` | 原生 Android 手机／平板控制端 beta |
 | `android/receiver/` | 实验性 Android/Google TV 接收器 |
 | `host/` | 共用接收协议、Windows/Mac 输入后端和 Linux worker 桥接 |
 | `desktop/` | 原生配对窗口和 Linux 输入 worker |

@@ -1,0 +1,17 @@
+<resources>
+    <string name="live_resume">重新读取输入框</string>
+    <string name="live_reload_confirm">用电脑当前输入框的内容替换手机文字？请先检查电脑再继续。</string>
+    <string name="live_sync">实时同步</string>
+    <string name="live_loading">正在读取输入框…</string>
+    <string name="live_syncing">正在同步…</string>
+    <string name="live_paused">编辑已暂停，请检查输入框后重新读取。</string>
+    <string name="live_clear_confirm">清空电脑当前输入框？删除会立即同步。</string>
+    <string name="stop_dictation">结束听写</string>
+    <string name="listening">正在听…</string>
+    <string name="speech_error">听写已停止，请检查文字或使用键盘的麦克风。</string>
+    <string name="microphone_permission">请允许麦克风权限进行听写，或使用键盘输入。</string>
+    <string name="gesture_settings">手势设置</string>
+    <string name="tv_control_mode">电视触控模式</string>
+    <string name="tv_navigation">方向遥控</string>
+    <string name="tv_pointer">光标（需要接收器支持）</string>
+</resources>

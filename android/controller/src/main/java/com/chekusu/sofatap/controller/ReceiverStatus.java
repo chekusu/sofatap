@@ -10,18 +10,19 @@ import java.util.UUID;
 public final class ReceiverStatus {
     public final String name, platform, navigationStatus, editorEpoch, textStatus, focusState, inputStatus;
     public final int focusRevision;
-    public final boolean ready, canMove, canClick, canScroll, canDrag, canRightClick, canNavigate, canBack, canHome, canText;
+    public final boolean ready, canMove, canClick, canScroll, canDrag, canRightClick, canNavigate, canBack, canHome, canText, supportsLiveText;
     private final boolean tv;
 
     private ReceiverStatus(boolean tv, String name, String platform, String inputStatus, boolean ready,
                            boolean move, boolean click, boolean scroll, boolean drag, boolean right,
                            boolean navigate, boolean back, boolean home, boolean text,
-                           String navigationStatus, String editorEpoch, String textStatus, String focusState, int focusRevision) {
+                           String navigationStatus, String editorEpoch, String textStatus, String focusState, int focusRevision, boolean supportsLiveText) {
         this.tv = tv; this.name = name; this.platform = platform; this.inputStatus = inputStatus; this.ready = ready;
         canMove = move; canClick = click; canScroll = scroll; canDrag = drag; canRightClick = right;
         canNavigate = navigate; canBack = back; canHome = home; canText = text;
         this.navigationStatus = navigationStatus; this.editorEpoch = editorEpoch; this.textStatus = textStatus; this.focusState = focusState;
         this.focusRevision = focusRevision;
+        this.supportsLiveText = supportsLiveText;
     }
 
     public static ReceiverStatus fromHello(JSONObject message, boolean tv) {
@@ -37,7 +38,7 @@ public final class ReceiverStatus {
             Object value = message.opt("platform");
             platform = value instanceof String s && Set.of("windows", "macos", "linux").contains(s) ? s : "unknown";
         }
-        return parse(message, tv, name, platform);
+        return parse(message, tv, name, platform, false);
     }
 
     public ReceiverStatus withUpdate(JSONObject message) {
@@ -46,10 +47,10 @@ public final class ReceiverStatus {
         if (!hasStatus) return this;
         // A partial status is invalid rather than retaining a previous grant after revocation.
         if (!message.has("inputAvailable") || !message.has("inputStatus") || (!tv && !message.has("dryRun"))) throw invalid();
-        return parse(message, tv, name, platform);
+        return parse(message, tv, name, platform, supportsLiveText);
     }
 
-    private static ReceiverStatus parse(JSONObject message, boolean tv, String name, String platform) {
+    private static ReceiverStatus parse(JSONObject message, boolean tv, String name, String platform, boolean previousLiveCapability) {
         boolean available = bool(message, "inputAvailable");
         if (!tv) {
             boolean dry = message.has("dryRun") && bool(message, "dryRun");
@@ -62,9 +63,11 @@ public final class ReceiverStatus {
                 focus = state;
                 revision = ((Number) field.opt("revision")).intValue();
             }
+            boolean live = previousLiveCapability;
+            if (message.has("liveText")) live = message.opt("liveText") instanceof JSONObject capability && integer(capability.opt("version"), 1, 1);
             return new ReceiverStatus(false, name, platform, dry ? "dry_run" : status, ready,
                 ready, ready, ready, ready, ready, false, ready, false, ready,
-                "unsupported", null, "no_editor", focus, revision);
+                "unsupported", null, "no_editor", focus, revision, live && !dry);
         }
         String input = string(message, "inputStatus");
         if (!Set.of("ready", "accessibility_required", "screen_locked", "unavailable").contains(input) || available != input.equals("ready")) throw invalid();
@@ -93,7 +96,7 @@ public final class ReceiverStatus {
         return new ReceiverStatus(true, name, platform, input, available || navigate || typing,
             available && move, available && click, available && scroll, false, false,
             navigate, navigate || available && back, navigate || available && home, typing,
-            navigation, typing ? editor : null, text, typing ? "editable" : text.equals("sensitive") ? "protected" : "unknown", -1);
+            navigation, typing ? editor : null, text, typing ? "editable" : text.equals("sensitive") ? "protected" : "unknown", -1, false);
     }
 
     static String canonicalUuid(String value) {

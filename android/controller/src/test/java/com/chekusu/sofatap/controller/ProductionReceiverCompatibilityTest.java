@@ -37,11 +37,15 @@ public class ProductionReceiverCompatibilityTest {
             assertEquals("Pinned transport failed", 1, failure.getCount());
             return value;
         }
-        JSONObject apply(JSONObject action) throws Exception {
+        JSONObject exchange(JSONObject action) throws Exception {
             assertTrue("Recording receiver did not accept the outgoing command", socket.send(action));
             JSONObject ack = receive();
             assertEquals("ack", ack.getString("type"));
             assertTrue("Receiver acknowledged a different action", action.getString("id").equals(ack.getString("id")));
+            return ack;
+        }
+        JSONObject apply(JSONObject action) throws Exception {
+            JSONObject ack = exchange(action);
             assertTrue("Recording receiver rejected a controller command", ack.getBoolean("ok"));
             return ack;
         }
@@ -124,6 +128,11 @@ public class ProductionReceiverCompatibilityTest {
             assertEquals("Sofatap ✓ · once", state(directory).getString("text"));
             assertEquals(3, state(directory).getJSONObject("actions").getInt("text"));
 
+            boolean liveEnabled = state(directory).optJSONObject("liveText") != null
+                && state(directory).getJSONObject("liveText").getBoolean("enabled");
+            assertEquals("Production capability must match the explicit synthetic editor flag", liveEnabled, status.supportsLiveText);
+            if (liveEnabled) verifyLiveText(connection, directory);
+
             setFocus(directory, "protected", 2);
             ReceiverStatus protectedStatus = status.withUpdate(connection.apply(WireActions.ping()));
             assertEquals("protected", protectedStatus.focusState);
@@ -147,6 +156,70 @@ public class ProductionReceiverCompatibilityTest {
             reconnected.apply(WireActions.text(pairing, resumed, " · reconnected"));
             assertEquals("Sofatap ✓ · once · reconnected", state(directory).getString("text"));
         }
+    }
+
+    private static void verifyLiveText(Connection connection, Path directory) throws Exception {
+        JSONObject before = state(directory);
+        int replacements = before.getJSONObject("liveText").getInt("replacements");
+        int reads = before.getJSONObject("liveText").getInt("reads");
+        int ordinaryText = before.getJSONObject("actions").getInt("text");
+        String original = before.getString("text");
+        JSONObject begin = connection.apply(WireActions.textBegin()).getJSONObject("liveText");
+        String session = ReceiverStatus.canonicalUuid(begin.getString("session"));
+        assertEquals(0, begin.getInt("revision"));
+        assertEquals(original, begin.getString("text"));
+
+        // A selection-only update must use the same acknowledged revision contract.
+        LiveTextEditor.Snapshot selected = new LiveTextEditor.Snapshot(original, 0, original.length());
+        assertLiveReply(connection.apply(WireActions.textSync(session, 1, selected)), session, 1, selected);
+        assertEquals(original.length(), state(directory).getJSONObject("selection").getInt("length"));
+
+        LiveTextEditor.Snapshot deleted = new LiveTextEditor.Snapshot("", 0, 0);
+        assertLiveReply(connection.apply(WireActions.textSync(session, 2, deleted)), session, 2, deleted);
+        assertEquals("", state(directory).getString("text"));
+
+        String unicode = "Android 中文 日本語 café e\u0301 👩‍💻";
+        LiveTextEditor.Snapshot inserted = new LiveTextEditor.Snapshot(unicode, unicode.indexOf("👩"), "👩‍💻".length());
+        JSONObject once = WireActions.textSync(session, 3, inserted);
+        assertLiveReply(connection.apply(once), session, 3, inserted);
+        assertLiveReply(connection.apply(once), session, 3, inserted); // Duplicate id is acknowledged, never applied twice.
+        JSONObject applied = state(directory);
+        assertEquals(unicode, applied.getString("text"));
+        assertEquals(inserted.selectionStart, applied.getJSONObject("selection").getInt("start"));
+        assertEquals(inserted.selectionLength, applied.getJSONObject("selection").getInt("length"));
+        assertEquals(replacements + 3, applied.getJSONObject("liveText").getInt("replacements"));
+        assertEquals(ordinaryText, applied.getJSONObject("actions").getInt("text"));
+
+        // A fresh id with an old revision is a conflict, not another append.
+        JSONObject stale = connection.exchange(WireActions.textSync(session, 3, deleted));
+        assertFalse("Stale live revision must be rejected", stale.getBoolean("ok"));
+        assertTrue(stale.getString("error").startsWith("live_text_conflict:"));
+        assertEquals(unicode, state(directory).getString("text"));
+        JSONObject afterConflict = connection.exchange(WireActions.textSync(session, 4, deleted));
+        assertFalse("Conflict must invalidate the old editor session", afterConflict.getBoolean("ok"));
+        assertEquals(replacements + 3, state(directory).getJSONObject("liveText").getInt("replacements"));
+
+        JSONObject reopened = connection.apply(WireActions.textBegin()).getJSONObject("liveText");
+        String fresh = ReceiverStatus.canonicalUuid(reopened.getString("session"));
+        assertFalse("Reread must create a new editing session", fresh.equals(session));
+        assertEquals(unicode, reopened.getString("text"));
+        LiveTextEditor.Snapshot restored = new LiveTextEditor.Snapshot(original, original.length(), 0);
+        assertLiveReply(connection.apply(WireActions.textSync(fresh, 1, restored)), fresh, 1, restored);
+        connection.apply(WireActions.textEnd(fresh));
+        JSONObject finished = state(directory);
+        assertEquals(original, finished.getString("text"));
+        assertEquals(reads + 2, finished.getJSONObject("liveText").getInt("reads"));
+        assertEquals(replacements + 4, finished.getJSONObject("liveText").getInt("replacements"));
+        assertEquals(ordinaryText, finished.getJSONObject("actions").getInt("text"));
+    }
+
+    private static void assertLiveReply(JSONObject acknowledgement, String session, int revision, LiveTextEditor.Snapshot expected) throws Exception {
+        JSONObject snapshot = acknowledgement.getJSONObject("liveText");
+        assertEquals(session, snapshot.getString("session"));
+        assertEquals(revision, snapshot.getInt("revision"));
+        assertEquals(expected.text, snapshot.getString("text"));
+        assertEquals(expected.selectionStart, snapshot.getInt("selectionStart"));
+        assertEquals(expected.selectionLength, snapshot.getInt("selectionLength"));
     }
 
     private static JSONObject read(Path file) throws Exception {

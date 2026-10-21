@@ -9,7 +9,6 @@ import android.graphics.Color;
 import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
-import android.speech.RecognizerIntent;
 import android.text.*;
 import android.view.*;
 import android.view.inputmethod.InputMethodManager;
@@ -22,36 +21,50 @@ import java.util.*;
 /** Native phone controller. The TV receiver remains a separate application. */
 public final class MainActivity extends Activity implements TouchSurfaceView.Listener {
     private static final int MINT=0xffb2f5d1, BACKGROUND=0xff0b1114, PANEL=0xff151d22, MUTED=0xff91a6a0;
-    private static final int CAMERA=71, DICTATION=72;
+    private static final int CAMERA=71, MICROPHONE=73;
     private DeviceStore store;
     RemoteSession session;
     private LinearLayout root;
     private FrameLayout pad;
     TouchSurfaceView surface;
-    EditText editor;
+    LiveEditText editor;
     private TextView deviceLabel, statusLabel;
-    private IconButton keyboardButton, foldButton, sendButton, micButton;
+    private IconButton keyboardButton, foldButton, sendButton, micButton, resumeButton;
     private LinearLayout composer, tvButtons;
     private boolean keyboardVisible, sending, uncertain, tv;
     private int tvPage, renderedTvPage=-1;
-    private AlertDialog scanDialog;
+    private AlertDialog scanDialog, guideDialog;
     private DecoratedBarcodeView scanner;
     private final Map<String,String> drafts=new HashMap<>();
     private final Set<String> uncertainDrafts=new HashSet<>();
     private String activeDraftId="", dictationTarget;
-    private String lastAutoEditor="";
+    private String lastAutoEditor="", pendingAutoEditor;
+    private int autoEditorGeneration, autoEditorAttempts;
+    private boolean autoEditorScheduled;
     private boolean resumed;
+    private boolean compactStatusBar, restoreStatusBar;
+    private int previousSystemBarsBehavior;
     private String restoredDraft="";
     private boolean restoredUncertain;
     private int deliveryMessage;
     private long draftGeneration;
+    private long appliedLiveSnapshot=-1;
+    private GesturePreferencesStore gesturePreferences;
+    private boolean tvPointerMode, applyingEditor, pendingDictation, speechWasLive;
+    private DictationSession dictation;
+    private SpeechDraft speechBase;
+    private String speechEditorKey, speechSessionId;
+    private long speechGeneration;
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         if(android.os.Build.VERSION.SDK_INT>=30)getWindow().setDecorFitsSystemWindows(false);
         try { store=new DeviceStore(getApplicationContext()); }
         catch(Exception e) { new AlertDialog.Builder(this).setMessage(R.string.store_error).setPositiveButton(R.string.done,(d,w)->finish()).show(); return; }
+        gesturePreferences=new GesturePreferencesStore(this);
+        dictation=new DictationSession(this);
         session=new RemoteSession(store,this::updateState);
         if(state!=null) { restoredDraft=state.getString("draft",""); restoredUncertain=state.getBoolean("uncertain"); }
+        tvPointerMode=getPreferences(MODE_PRIVATE).getBoolean("tvPointer",false);
         buildUi();
         try {
             DeviceStore.Device selected=store.selected();
@@ -70,22 +83,31 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     private void haptic(View v) { v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); }
     private void buildUi() {
         String draft=editor==null?restoredDraft:editor.getText().toString();
+        LiveEditText retainedEditor=editor;
+        if(retainedEditor!=null&&retainedEditor.getParent() instanceof ViewGroup parent)parent.removeView(retainedEditor);
         boolean landscape=getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE;
+        if(!landscape)restoreStatusBar();
         root=new LinearLayout(this); root.setOrientation(landscape?LinearLayout.HORIZONTAL:LinearLayout.VERTICAL); root.setBackgroundColor(BACKGROUND);
         root.setPadding(dp(16),dp(12),dp(16),dp(8));
         setContentView(root);
         root.setOnApplyWindowInsetsListener((v,insets)->{
             if(android.os.Build.VERSION.SDK_INT>=30) {
+                adaptLandscapeSystemBars(insets);
                 android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
                 android.graphics.Insets ime=insets.getInsets(WindowInsets.Type.ime());
                 root.setPadding(dp(16)+bars.left,dp(8)+bars.top,dp(16)+bars.right,dp(6)+Math.max(bars.bottom,ime.bottom));
-                keyboardVisible=insets.isVisible(WindowInsets.Type.ime()); updateKeyboardIcons();
+                keyboardVisible=insets.isVisible(WindowInsets.Type.ime()); keyboardVisibilityObserved(); updateKeyboardIcons();
+                fitEditorHeight();
             }
             return insets;
         });
+        root.addOnLayoutChangeListener((v,l,t,r,b,oldL,oldT,oldR,oldB)->{
+            fitEditorHeight();
+            if(android.os.Build.VERSION.SDK_INT>=30&&(b-t!=oldB-oldT||r-l!=oldR-oldL))v.requestApplyInsets();
+        });
         if(android.os.Build.VERSION.SDK_INT<30) root.getViewTreeObserver().addOnGlobalLayoutListener(()->{
             Rect r=new Rect(); root.getWindowVisibleDisplayFrame(r);
-            keyboardVisible=root.getRootView().getHeight()-r.bottom>dp(160); updateKeyboardIcons();
+            keyboardVisible=root.getRootView().getHeight()-r.bottom>dp(160); keyboardVisibilityObserved(); updateKeyboardIcons();
         });
         pad=new FrameLayout(this); pad.setBackground(background(0xff10191b,32)); pad.setClipToOutline(true);
         root.addView(pad,landscape?new LinearLayout.LayoutParams(0,-1,1):new LinearLayout.LayoutParams(-1,0,1));
@@ -116,41 +138,154 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         composer=new LinearLayout(this); composer.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);cp.topMargin=landscape?0:dp(12);inputColumn.addView(composer,cp);
         FrameLayout field=new FrameLayout(this);field.setBackground(background(PANEL,22));composer.addView(field,new LinearLayout.LayoutParams(-1,-2));
-        editor=new EditText(this);editor.setId(View.generateViewId());editor.setTextColor(Color.WHITE);editor.setHintTextColor(MUTED);
+        editor=retainedEditor==null?new LiveEditText(this):retainedEditor;
+        if(retainedEditor==null){editor.setId(View.generateViewId());editor.setTextColor(Color.WHITE);editor.setHintTextColor(MUTED);
         editor.setTextSize(17);editor.setHint(R.string.draft_hint);editor.setMinLines(1);editor.setMaxLines(3);
         editor.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE|android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
         editor.setImeOptions(android.view.inputmethod.EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         editor.setPadding(dp(16),dp(14),dp(64),dp(14));editor.setBackgroundColor(Color.TRANSPARENT);
-        editor.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16000)}); editor.setText(draft);
-        editor.setSaveEnabled(false);field.addView(editor,new FrameLayout.LayoutParams(-1,-2));
+        editor.setFilters(new InputFilter[]{new InputFilter.LengthFilter(16000)}); if(retainedEditor==null)editor.setText(draft);
+        editor.setSaveEnabled(false);}
+        editor.setMinHeight(dp(54));
+        editor.setMaxLines(3);
+        field.addView(editor,new FrameLayout.LayoutParams(-1,-2));
         sendButton=icon("send",R.string.send,this::sendText);sendButton.setPrimary(true);
         FrameLayout.LayoutParams sp=new FrameLayout.LayoutParams(dp(44),dp(44),Gravity.END|Gravity.BOTTOM);sp.setMargins(0,dp(5),dp(7),dp(5));field.addView(sendButton,sp);
-        editor.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){updateSend();}public void afterTextChanged(Editable e){}});
+        editor.setEditListener(new LiveEditText.Listener(){
+            public void edited(String text,int start,int length,boolean composing){
+                if(applyingEditor)return;
+                session.liveText.edit(new LiveTextEditor.Snapshot(text,start,length),composing);updateSend();
+            }
+            public void emptyBackspace(){
+                if(!usesLiveText()&&!uncertain&&!sending&&!speechBusy()&&session.connected()&&
+                    !"protected".equals(session.status.focusState)&&!"other".equals(session.status.focusState))remoteBackspace();
+            }
+        });
+        editor.setOnFocusChangeListener((v,focused)->{if(focused)openLiveEditor();});
         LinearLayout lower=new LinearLayout(this);lower.setGravity(Gravity.CENTER_VERTICAL);inputColumn.addView(lower,new LinearLayout.LayoutParams(-1,dp(44)));
         foldButton=icon("down",R.string.hide_keyboard,this::toggleKeyboard);lower.addView(foldButton,new LinearLayout.LayoutParams(dp(38),dp(38)));
-        lower.addView(icon("trash",R.string.clear,()->{if(!sending){editor.setText("");uncertain=false;uncertainDrafts.remove(activeDraftId);deliveryMessage=0;updateState();}}),new LinearLayout.LayoutParams(dp(38),dp(38)));
+        lower.addView(icon("trash",R.string.clear,this::clearText),new LinearLayout.LayoutParams(dp(38),dp(38)));
         lower.addView(icon("backspace",R.string.backspace,this::remoteBackspace),new LinearLayout.LayoutParams(dp(38),dp(38)));
         lower.addView(icon("enter",R.string.enter,this::remoteEnter),new LinearLayout.LayoutParams(dp(38),dp(38)));
+        resumeButton=icon("refresh",R.string.live_resume,this::restartLiveEditor);
+        lower.addView(resumeButton,new LinearLayout.LayoutParams(dp(38),dp(38)));
         statusLabel=label("",11,MUTED);statusLabel.setGravity(Gravity.END);statusLabel.setMaxLines(2);
         lower.addView(statusLabel,new LinearLayout.LayoutParams(0,-2,1));
         updateKeyboardIcons();updateState();
     }
+    @android.annotation.TargetApi(30)
+    private void adaptLandscapeSystemBars(WindowInsets insets){
+        // Some landscape phone IMEs leave less than two rows of touch controls.
+        // Reclaim only this window's status bar; navigation/cutout insets stay safe.
+        // Ignoring visibility makes the threshold stable after hiding the bar.
+        android.graphics.Insets stable=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+        int bottom=Math.max(stable.bottom,insets.getInsets(WindowInsets.Type.ime()).bottom);
+        int height=root.getHeight();
+        boolean compact=resumed&&getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE&&
+                insets.isVisible(WindowInsets.Type.ime())&&height>0&&height-stable.top-bottom-dp(14)<dp(128);
+        WindowInsetsController controller=getWindow().getInsetsController();
+        if(compact&&!compactStatusBar&&controller!=null){
+            compactStatusBar=true;restoreStatusBar=insets.isVisible(WindowInsets.Type.statusBars());
+            previousSystemBarsBehavior=controller.getSystemBarsBehavior();
+            controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            controller.hide(WindowInsets.Type.statusBars());
+        }else if(!compact)restoreStatusBar();
+    }
+    private void restoreStatusBar(){
+        if(android.os.Build.VERSION.SDK_INT<30||!compactStatusBar)return;
+        compactStatusBar=false;
+        WindowInsetsController controller=getWindow().getInsetsController();
+        if(controller!=null){
+            controller.setSystemBarsBehavior(previousSystemBarsBehavior);
+            if(restoreStatusBar)controller.show(WindowInsets.Type.statusBars());
+        }
+        restoreStatusBar=false;
+    }
+    private void fitEditorHeight(){
+        if(editor==null||root==null||root.getHeight()==0)return;
+        int lines=3;
+        if(getResources().getConfiguration().orientation==Configuration.ORIENTATION_LANDSCAPE){
+            int available=root.getHeight()-root.getPaddingTop()-root.getPaddingBottom()-dp(44);
+            lines=Math.max(1,Math.min(3,(available-editor.getCompoundPaddingTop()-editor.getCompoundPaddingBottom())/Math.max(1,editor.getLineHeight())));
+        }
+        if(editor.getMaxLines()!=lines)editor.setMaxLines(lines);
+    }
     private void updateKeyboardIcons(){ if(keyboardButton==null)return;keyboardButton.setActive(keyboardVisible);foldButton.setIcon(keyboardVisible?"down":"up");foldButton.setContentDescription(getString(keyboardVisible?R.string.hide_keyboard:R.string.keyboard));keyboardButton.setContentDescription(foldButton.getContentDescription()); }
     private void toggleKeyboard(){
         InputMethodManager ime=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
-        if(keyboardVisible){ime.hideSoftInputFromWindow(editor.getWindowToken(),0);editor.clearFocus();}
-        else {editor.requestFocus();ime.showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT);}
+        if(keyboardVisible){
+            String target=currentEditorKey();if(target!=null)lastAutoEditor=target;
+            cancelAutoKeyboard();
+            if(android.os.Build.VERSION.SDK_INT>=30&&editor.getWindowInsetsController()!=null)editor.getWindowInsetsController().hide(WindowInsets.Type.ime());
+            ime.hideSoftInputFromWindow(editor.getWindowToken(),0);editor.clearFocus();
+        }else {openLiveEditor();editor.requestFocus();showEditorKeyboard();}
     }
-    private void updateSend(){if(sendButton!=null)sendButton.setEnabled(session!=null&&session.connected()&&session.status.canText&&!sending&&!editor.getText().toString().isEmpty());}
+    private boolean speechBusy(){return pendingDictation || dictation!=null&&dictation.active();}
+    private boolean usesLiveText(){
+        if(session==null)return false;
+        LiveTextEditor model=session.liveText;
+        return model.imported() || model.state()==LiveTextEditor.State.STARTING || model.state()==LiveTextEditor.State.PAUSED ||
+            session.connected()&&!session.pairing.isTv()&&session.status.supportsLiveText&&model.state()!=LiveTextEditor.State.UNSUPPORTED&&editor.getText().length()==0;
+    }
+    private LiveTextEditor.Snapshot localSnapshot(){
+        int a=Math.max(0,editor.getSelectionStart()),b=Math.max(0,editor.getSelectionEnd());
+        return new LiveTextEditor.Snapshot(editor.getText().toString(),Math.min(a,b),Math.abs(a-b));
+    }
+    private void openLiveEditor(){
+        if(editor==null||session==null||!session.connected()||session.pairing.isTv()||speechBusy())return;
+        session.liveText.open(localSnapshot(),editor.composing());
+    }
+    private void restartLiveEditor(){
+        if(speechBusy()||sending)return;
+        new AlertDialog.Builder(this).setMessage(R.string.live_reload_confirm).setNegativeButton(R.string.cancel,null)
+            .setPositiveButton(R.string.live_resume,(d,w)->session.liveText.restart(localSnapshot(),editor.composing())).show();
+    }
+    private void updateSend(){
+        if(sendButton==null||session==null)return;
+        boolean live=usesLiveText();
+        sendButton.setIcon(live?"check":"send");
+        sendButton.setContentDescription(getString(live?R.string.live_sync:R.string.send));
+        sendButton.setEnabled(!live&&session.connected()&&session.status.canText&&!sending&&!speechBusy()&&!editor.composing()&&editor.getText().length()>0);
+        editor.setEnabled(!sending&&!speechBusy()&&session.liveText.state()!=LiveTextEditor.State.STARTING&&session.liveText.state()!=LiveTextEditor.State.PAUSED);
+        if(resumeButton!=null)resumeButton.setVisibility(session.liveText.state()==LiveTextEditor.State.PAUSED?View.VISIBLE:View.GONE);
+        if(micButton!=null){micButton.setActive(speechBusy());micButton.setContentDescription(getString(speechBusy()?R.string.stop_dictation:R.string.dictate));}
+    }
+    private void renderLiveEditor(){
+        LiveTextEditor model=session.liveText;
+        if(appliedLiveSnapshot!=model.snapshotVersion()){
+            appliedLiveSnapshot=model.snapshotVersion();LiveTextEditor.Snapshot snapshot=model.snapshot();
+            applyingEditor=true;
+            try {if(snapshot!=null)editor.applySnapshot(snapshot.text,snapshot.selectionStart,snapshot.selectionLength);
+                else editor.applySnapshot("",0,0);}
+            finally {applyingEditor=false;}
+        }
+        if(speechBase!=null&&(!Objects.equals(dictationTarget,activeDraftId)||!Objects.equals(speechEditorKey,currentEditorKey())||speechWasLive&&(!model.ready()||!Objects.equals(speechSessionId,model.sessionId()))))cancelSpeech();
+    }
+    private void clearText(){
+        if(sending||speechBusy())return;
+        if(session.liveText.ready()){
+            new AlertDialog.Builder(this).setMessage(R.string.live_clear_confirm).setNegativeButton(R.string.cancel,null)
+                .setPositiveButton(R.string.clear,(d,w)->{editor.applySnapshot("",0,0);editor.flushEdit();}).show();
+        }else if(!usesLiveText()){
+            editor.setText("");uncertain=false;uncertainDrafts.remove(activeDraftId);deliveryMessage=0;updateState();
+        }
+    }
     private void updateState(){
         if(deviceLabel==null||session==null)return;
-        tv=session.pairing!=null&&session.pairing.isTv();surface.setTvMode(tv);tvButtons.setVisibility(tv?View.VISIBLE:View.GONE);renderTvButtons();
+        renderLiveEditor();
+        tv=session.pairing!=null&&session.pairing.isTv();
+        surface.setConfiguration(gesturePreferences.load(tv?GestureConfiguration.Target.television:GestureConfiguration.Target.computer));
+        surface.setTvMode(tv);surface.setTvPointerMode(tvPointerMode);tvButtons.setVisibility(tv?View.VISIBLE:View.GONE);renderTvButtons();
         String name=getString(R.string.no_device);
         try{DeviceStore.Device d=store.selected();if(d!=null)name=d.name;}catch(Exception ignored){}
         if(session.pairing!=null&&session.state==RemoteSession.State.CONNECTING)name=session.pairing.name==null?session.pairing.host:session.pairing.name;
         deviceLabel.setText(name);
         int stateId=switch(session.state){case CONNECTING->R.string.connecting;case RETRYING->R.string.retrying;case BLOCKED->R.string.failed;case CONNECTED->session.status.ready?R.string.connected:R.string.not_ready;default->R.string.no_device;};
-        statusLabel.setText(session.connected()&&deliveryMessage!=0?deliveryMessage:stateId);updateSend();
+        int liveMessage=switch(session.liveText.state()){
+            case STARTING->R.string.live_loading;case SYNCING->R.string.live_syncing;
+            case PAUSED->R.string.live_paused;default->0;};
+        statusLabel.setText(!session.connected()?stateId:speechBusy()?R.string.listening:liveMessage!=0?liveMessage:deliveryMessage!=0?deliveryMessage:stateId);updateSend();
+        if(pendingDictation&&session.liveText.state()!=LiveTextEditor.State.STARTING)editor.post(()->{if(pendingDictation)startSpeech();});
         maybeShowKeyboard();
     }
     private String currentEditorKey(){
@@ -158,17 +293,46 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         String revision=session.pairing.isTv()?session.status.editorEpoch:Integer.toString(session.status.focusRevision);
         return revision==null||revision.equals("-1")?null:session.pairing.identity()+":"+revision;
     }
+    private void cancelAutoKeyboard(){pendingAutoEditor=null;autoEditorGeneration++;autoEditorAttempts=0;autoEditorScheduled=false;}
+    private void keyboardVisibilityObserved(){
+        // Request acceptance is not proof that an OEM keyboard became visible.
+        if(!keyboardVisible||editor==null||!editor.hasFocus()||!hasWindowFocus())return;
+        String target=currentEditorKey();
+        if(target!=null){lastAutoEditor=target;cancelAutoKeyboard();}
+    }
+    private void showEditorKeyboard(){
+        if(android.os.Build.VERSION.SDK_INT>=30&&editor.getWindowInsetsController()!=null)
+            editor.getWindowInsetsController().show(WindowInsets.Type.ime());
+        else ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT);
+    }
     private void maybeShowKeyboard(){
         String target=currentEditorKey();
-        if(!resumed||editor==null||target==null||target.equals(lastAutoEditor))return;
-        editor.post(()->{
-            if(!resumed||!target.equals(currentEditorKey())||target.equals(lastAutoEditor)||scanDialog!=null||!hasWindowFocus()||sending)return;
-            editor.requestFocus();
-            if(((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT))
-                lastAutoEditor=target; // Respect a later manual dismissal until the remote field changes.
-        });
+        if(!resumed||editor==null||target==null||target.equals(lastAutoEditor)){cancelAutoKeyboard();return;}
+        if(!target.equals(pendingAutoEditor)){cancelAutoKeyboard();pendingAutoEditor=target;}
+        if(autoEditorScheduled||autoEditorAttempts>=4||scanDialog!=null||guideDialog!=null||!hasWindowFocus()||sending||speechBusy())return;
+        scheduleAutoKeyboard(target,autoEditorGeneration,0);
     }
-    @Override public void onWindowFocusChanged(boolean hasFocus){super.onWindowFocusChanged(hasFocus);if(hasFocus)maybeShowKeyboard();}
+    private void scheduleAutoKeyboard(String target,int generation,long delay){
+        autoEditorScheduled=true;
+        editor.postDelayed(()->{
+            if(generation!=autoEditorGeneration)return;
+            autoEditorScheduled=false;
+            if(!resumed||!target.equals(currentEditorKey())||target.equals(lastAutoEditor)||scanDialog!=null||guideDialog!=null||!hasWindowFocus()||sending||!editor.isAttachedToWindow())return;
+            openLiveEditor();
+            // Opening a live session may disable the editor until its ACK arrives.
+            // That state transition calls updateState; it must not consume IME attempts.
+            if(!editor.isEnabled()||speechBusy()||session.liveText.state()==LiveTextEditor.State.STARTING||session.liveText.state()==LiveTextEditor.State.PAUSED)return;
+            autoEditorAttempts++;editor.requestFocus();showEditorKeyboard();
+            // A bounded retry survives the dialog/window focus hand-off. Heartbeats
+            // cannot reset the attempt budget; visible IME or explicit hide consumes it.
+            if(generation==autoEditorGeneration&&autoEditorAttempts<4)
+                scheduleAutoKeyboard(target,generation,autoEditorAttempts==1?100:autoEditorAttempts==2?250:500);
+        },delay);
+    }
+    @Override public void onWindowFocusChanged(boolean hasFocus){
+        super.onWindowFocusChanged(hasFocus);
+        if(hasFocus)maybeShowKeyboard();else cancelAutoKeyboard();
+    }
     private void renderTvButtons(){
         if(tvButtons==null||renderedTvPage==tvPage)return;renderedTvPage=tvPage;tvButtons.removeAllViews();String[][] icons={{"back","home"},{"left","right"},{"up","down"}};
         String[] selected=icons[tvPage];for(String k:selected){IconButton b=icon(k,k.equals("back")?R.string.back:k.equals("home")?R.string.home:k.equals("left")?R.string.left:k.equals("right")?R.string.right:k.equals("up")?R.string.up:R.string.down,()->navigate(k));
@@ -177,10 +341,10 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
             tvButtons.addView(b,new LinearLayout.LayoutParams(dp(44),dp(48)));}
     }
     private void toast(int resource){Toast.makeText(this,resource,Toast.LENGTH_SHORT).show();}
-    private void saveDraft(){drafts.put(activeDraftId,editor.getText().toString());if(uncertain)uncertainDrafts.add(activeDraftId);else uncertainDrafts.remove(activeDraftId);}
+    private void saveDraft(){drafts.put(activeDraftId,session.liveText.imported()?"":editor.getText().toString());if(uncertain)uncertainDrafts.add(activeDraftId);else uncertainDrafts.remove(activeDraftId);}
     private void choose(DeviceStore.Device device){
-        if(sending){toast(R.string.queue_busy);return;}
-        try{store.select(device.id);saveDraft();activeDraftId=device.id;draftGeneration++;editor.setText(drafts.getOrDefault(device.id,""));uncertain=uncertainDrafts.contains(device.id);deliveryMessage=uncertain?R.string.uncertain:0;session.select(device.pairing,false);}catch(Exception e){toast(R.string.store_error);}
+        if(sending||speechBusy()){toast(R.string.queue_busy);return;}
+        try{saveDraft();session.liveText.end();store.select(device.id);activeDraftId=device.id;draftGeneration++;session.select(device.pairing,false);editor.applySnapshot(drafts.getOrDefault(device.id,""),0,0);uncertain=uncertainDrafts.contains(device.id);deliveryMessage=uncertain?R.string.uncertain:0;updateState();}catch(Exception e){toast(R.string.store_error);}
     }
     private void showDevices(){
         try{List<DeviceStore.Device> devices=store.list();List<String> names=new ArrayList<>();for(var d:devices)names.add(d.name+(d.id.equals(store.selectedId())?"  ✓":""));names.add("+ "+getString(R.string.add_device));
@@ -189,17 +353,22 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     }
     private void deviceOptions(DeviceStore.Device device){
         List<String> choices=new ArrayList<>(List.of(getString(R.string.pair),getString(R.string.rename),getString(R.string.disconnect),getString(R.string.remove)));
-        if(device.pairing.isTv())choices.add(getString(R.string.pair_remote));
+        if(device.pairing.isTv()){choices.add(getString(R.string.pair_remote));choices.add(getString(R.string.tv_control_mode));}
         new AlertDialog.Builder(this).setTitle(device.name).setItems(choices.toArray(new String[0]),(d,w)->{
             if(w==0)choose(device);
             if(w==1){EditText name=new EditText(this);name.setSingleLine(true);name.setText(device.name);new AlertDialog.Builder(this).setTitle(R.string.rename).setView(name).setNegativeButton(R.string.cancel,null).setPositiveButton(R.string.done,(a,b)->{try{store.rename(device.id,name.getText().toString());updateState();}catch(Exception e){toast(R.string.invalid_pairing);}}).show();}
             if(w==2&&session.pairing!=null&&session.pairing.identity().equals(device.id)){surface.cancelGesture();session.disconnect();}
             if(w==3){try{if(session.pairing!=null&&session.pairing.identity().equals(device.id)){surface.cancelGesture();session.forget();editor.setText("");activeDraftId="";}store.remove(device.id);drafts.remove(device.id);uncertainDrafts.remove(device.id);updateState();}catch(Exception e){toast(R.string.store_error);}}
             if(w==4){if(session.pairing==null||!session.pairing.identity().equals(device.id)||!session.connected()){choose(device);toast(R.string.connecting);}else pairTvRemote();}
+            if(w==5){
+                new AlertDialog.Builder(this).setTitle(R.string.tv_control_mode).setSingleChoiceItems(new String[]{getString(R.string.tv_navigation),getString(R.string.tv_pointer)},tvPointerMode?1:0,(a,b)->{
+                    surface.cancelGesture();tvPointerMode=b==1;getPreferences(MODE_PRIVATE).edit().putBoolean("tvPointer",tvPointerMode).apply();updateState();a.dismiss();
+                }).show();
+            }
         }).show();
     }
     private void showScanner(){
-        if(sending){toast(R.string.queue_busy);return;}
+        if(sending||speechBusy()){toast(R.string.queue_busy);return;}
         LinearLayout content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(12),dp(8),dp(12),dp(12));
         scanner=new DecoratedBarcodeView(this);scanner.setDecoderFactory(new DefaultDecoderFactory(List.of(BarcodeFormat.QR_CODE)));
         content.addView(scanner,new LinearLayout.LayoutParams(-1,dp(260)));
@@ -212,19 +381,53 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     }
     private void pasteLink(){EditText link=new EditText(this);link.setHint("sofatap://…");link.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);link.setSaveEnabled(false);
         new AlertDialog.Builder(this).setTitle(R.string.paste_link).setView(link).setNegativeButton(R.string.cancel,null).setPositiveButton(R.string.pair,(d,w)->pair(link.getText().toString())).show();}
-    void pair(String raw){try{Pairing p=Pairing.parse(raw);saveDraft();activeDraftId=p.identity();draftGeneration++;editor.setText(drafts.getOrDefault(activeDraftId,""));uncertain=uncertainDrafts.contains(activeDraftId);deliveryMessage=uncertain?R.string.uncertain:0;session.select(p,true);}catch(Exception e){toast(R.string.invalid_pairing);}}
-    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==CAMERA&&scanner!=null){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED)scanner.resume();else toast(R.string.camera_permission);}}
-    private void showGuide(){new AlertDialog.Builder(this).setTitle(R.string.guide).setMessage(tv?R.string.guide_tv:R.string.guide_desktop).setPositiveButton(R.string.done,null).show();}
+    void pair(String raw){try{Pairing p=Pairing.parse(raw);saveDraft();session.liveText.end();activeDraftId=p.identity();draftGeneration++;session.select(p,true);editor.applySnapshot(drafts.getOrDefault(activeDraftId,""),0,0);uncertain=uncertainDrafts.contains(activeDraftId);deliveryMessage=uncertain?R.string.uncertain:0;updateState();}catch(Exception e){toast(R.string.invalid_pairing);}}
+    @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] results){super.onRequestPermissionsResult(request,permissions,results);if(request==MICROPHONE){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED&&resumed)dictate();else toast(R.string.microphone_permission);}if(request==CAMERA&&scanner!=null){if(results.length>0&&results[0]==PackageManager.PERMISSION_GRANTED)scanner.resume();else toast(R.string.camera_permission);}}
+    private void showGuide(){
+        cancelAutoKeyboard();
+        guideDialog=new AlertDialog.Builder(this).setTitle(R.string.guide).setMessage(tv?R.string.guide_tv:R.string.guide_desktop)
+            .setNeutralButton(R.string.gesture_settings,(d,w)->showGestureSettings()).setPositiveButton(R.string.done,null).create();
+        guideDialog.setOnDismissListener(d->{guideDialog=null;maybeShowKeyboard();});
+        guideDialog.show();
+    }
+    private void showGestureSettings(){
+        surface.cancelGesture();
+        GestureConfiguration.Target target=tv?GestureConfiguration.Target.television:GestureConfiguration.Target.computer;
+        GestureSettingsDialog.show(this,gesturePreferences,target,GestureConfiguration.availableActions(session.status,target),this::updateState);
+    }
     private void dictate(){
-        if(sending){toast(R.string.queue_busy);return;}dictationTarget=activeDraftId;
-        Intent intent=new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS,1);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE,Locale.getDefault().toLanguageTag());
-        try{startActivityForResult(intent,DICTATION);}catch(ActivityNotFoundException e){toast(R.string.speech_missing);}
+        if(dictation.active()){dictation.stop();return;}
+        if(pendingDictation){cancelSpeech();updateState();return;}
+        if(sending||session.liveText.state()==LiveTextEditor.State.PAUSED){toast(R.string.queue_busy);return;}
+        if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MICROPHONE);return;
+        }
+        editor.flushEdit();openLiveEditor();pendingDictation=true;updateState();
     }
-    @Override protected void onActivityResult(int req,int result,Intent data){super.onActivityResult(req,result,data);if(req==DICTATION&&result==RESULT_OK&&data!=null&&Objects.equals(dictationTarget,activeDraftId)){
-        ArrayList<String> results=data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);if(results!=null&&!results.isEmpty()){int start=Math.max(0,editor.getSelectionStart()),end=Math.max(start,editor.getSelectionEnd());editor.getText().replace(start,end,results.get(0));}}
+    private void startSpeech(){
+        if(!pendingDictation||!resumed)return;
+        if(session.liveText.state()==LiveTextEditor.State.PAUSED){cancelSpeech();updateState();return;}
+        pendingDictation=false;captureSpeechDraft();
+        if(!dictation.available()){cancelSpeech();toast(R.string.speech_missing);updateState();return;}
+        dictation.start(new DictationSession.Listener(){
+            public void transcript(String text,boolean finalResult){applySpeechResult(text);}
+            public void finished(boolean error){speechBase=null;updateState();if(error)toast(R.string.speech_error);}
+        });updateState();
     }
+    void captureSpeechDraft(){
+        dictationTarget=activeDraftId;speechEditorKey=currentEditorKey();speechWasLive=session.liveText.ready();speechSessionId=session.liveText.sessionId();speechGeneration=draftGeneration;
+        int a=Math.max(0,editor.getSelectionStart()),b=Math.max(0,editor.getSelectionEnd());
+        speechBase=new SpeechDraft(editor.getText().toString(),Math.min(a,b),Math.abs(a-b));
+    }
+    void applySpeechResult(String text){
+        if(speechBase==null||speechGeneration!=draftGeneration||!Objects.equals(dictationTarget,activeDraftId)||
+            !Objects.equals(speechEditorKey,currentEditorKey())||speechWasLive&&(!session.liveText.ready()||!Objects.equals(speechSessionId,session.liveText.sessionId()))){cancelSpeech();return;}
+        try{SpeechDraft result=speechBase.replacing(text);editor.applySnapshot(result.text,result.start,result.length);editor.flushEdit();}
+        catch(IllegalArgumentException invalid){cancelSpeech();toast(R.string.unsupported);}
+    }
+    private void cancelSpeech(){pendingDictation=false;speechBase=null;if(dictation!=null)dictation.cancel();}
     private void sendText(){
+        if(usesLiveText()||speechBusy()||!editor.flushEdit())return;
         if(uncertain){new AlertDialog.Builder(this).setMessage(R.string.uncertain).setNegativeButton(R.string.cancel,null).setPositiveButton(R.string.review,(d,w)->{uncertain=false;uncertainDrafts.remove(activeDraftId);deliveryMessage=0;updateState();}).show();return;}
         if(!session.connected()||sending)return;
         String text=editor.getText().toString();long generation=draftGeneration;
@@ -237,8 +440,15 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     }
     private interface Action { JSONObject value(); }
     private void execute(Action action){if(!session.connected()){toast(R.string.no_device);return;}try{if(!session.send(action.value(),result->{if(result==RemoteSession.Result.REJECTED||result==RemoteSession.Result.UNCERTAIN)toast(R.string.unsupported);})){toast(R.string.queue_busy);}}catch(Exception e){toast(R.string.unsupported);}}
-    private void remoteBackspace(){execute(()->WireActions.backspace(session.pairing,session.status));}
-    private void remoteEnter(){execute(()->WireActions.enter(session.pairing,session.status));}
+    private void remoteBackspace(){
+        if(sending||speechBusy()||session.liveText.state()==LiveTextEditor.State.PAUSED||editor.composing())return;
+        if(session.liveText.ready()){
+            int start=Math.min(editor.getSelectionStart(),editor.getSelectionEnd()),end=Math.max(editor.getSelectionStart(),editor.getSelectionEnd());
+            if(start==end&&start>0){android.icu.text.BreakIterator chars=android.icu.text.BreakIterator.getCharacterInstance();chars.setText(editor.getText().toString());start=chars.preceding(start);}
+            if(start>=0&&end>start){editor.getText().delete(start,end);editor.setSelection(start);editor.flushEdit();}
+        }else execute(()->WireActions.backspace(session.pairing,session.status));
+    }
+    private void remoteEnter(){if(!sending&&!speechBusy()&&session.liveText.state()!=LiveTextEditor.State.PAUSED&&editor.flushEdit())execute(()->WireActions.enter(session.pairing,session.status));}
     private void pairTvRemote(){
         if(!session.connected()||!session.pairing.isTv()){toast(R.string.no_device);return;}
         String target=session.pairing.identity();
@@ -260,9 +470,12 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     @Override public void drag(boolean down){if(session.connected()&&session.status.canDrag)execute(()->WireActions.button(down));}
     @Override public void navigate(String direction){if(session.connected()&&(session.status.canNavigate||direction.equals("back")&&session.status.canBack||direction.equals("home")&&session.status.canHome))execute(()->WireActions.key(session.pairing,session.status,direction));else toast(R.string.unsupported);}
     @Override public void back(){navigate("back");}
-    @Override protected void onResume(){super.onResume();resumed=true;if(session!=null)session.resume();if(scanner!=null&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)scanner.resume();}
-    @Override protected void onPause(){resumed=false;if(surface!=null)surface.cancelGesture();if(scanner!=null)scanner.pause();super.onPause();}
+    @Override public void shortcut(GestureConfiguration.Action action){switch(action){
+        case toggleKeyboard->toggleKeyboard();case toggleDictation->dictate();case confirm->{if(tv)navigate("confirm");else remoteEnter();}case back->navigate("back");case home->navigate("home");default->{} }}
+    @Override protected void onResume(){super.onResume();resumed=true;if(root!=null)root.requestApplyInsets();if(session!=null)session.resume();if(scanner!=null&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)scanner.resume();}
+    @Override protected void onPause(){resumed=false;cancelAutoKeyboard();restoreStatusBar();cancelSpeech();if(surface!=null)surface.cancelGesture();if(scanner!=null)scanner.pause();super.onPause();}
     @Override protected void onStop(){if(session!=null)session.suspend();super.onStop();}
-    @Override public void onConfigurationChanged(Configuration c){super.onConfigurationChanged(c);if(surface!=null)surface.cancelGesture();buildUi();}
-    @Override protected void onSaveInstanceState(Bundle out){if(editor!=null){out.putString("draft",editor.getText().toString());out.putBoolean("uncertain",uncertain||sending);out.putString("draftTarget",activeDraftId);}super.onSaveInstanceState(out);}
+    @Override protected void onDestroy(){cancelAutoKeyboard();cancelSpeech();super.onDestroy();}
+    @Override public void onConfigurationChanged(Configuration c){super.onConfigurationChanged(c);if(surface!=null)surface.cancelGesture();if(editor!=null)editor.flushEdit();buildUi();}
+    @Override protected void onSaveInstanceState(Bundle out){if(editor!=null){out.putString("draft",session.liveText.imported()?"":editor.getText().toString());out.putBoolean("uncertain",uncertain||sending);out.putString("draftTarget",activeDraftId);}super.onSaveInstanceState(out);}
 }

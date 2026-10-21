@@ -26,6 +26,23 @@ SOFATAP_HARNESS_RUN="$(mktemp -d /tmp/sofatap-device-harness.XXXXXX)"
   --data-dir "$SOFATAP_HARNESS_RUN" --port 54439 --duration-seconds 1800
 ```
 
+Add `--live-text` to exercise the production `textBegin`, `textSync`, and `textEnd`
+protocol against the same owned synthetic field. This explicit flag supplies a
+test-only `ILiveTextEditor` implementation; it never creates a platform text editor.
+Without the flag, live editing is unavailable and existing draft-send tests keep
+their original behavior. `state.json` records `liveText.enabled`, `liveText.reads`,
+and `liveText.replacements`. Only an editable synthetic focus permits a live read;
+protected fields, changed field identities, text/selection conflicts, invalid
+Unicode and recognizable pairing material are rejected.
+
+The Android controller's opt-in JVM compatibility test reads the private pairing
+file directly. Set `SOFATAP_CONTROLLER_HARNESS_DIR` to this run directory and run
+`:controller:testDebugUnitTest --tests com.chekusu.sofatap.controller.ProductionReceiverCompatibilityTest`
+from `android/`. Use `--live-text` for that run to include exact UTF-16 selections,
+full-field deletion, Chinese/Japanese/emoji text, duplicate action IDs, stale
+revision rejection and a fresh editing session. This validates production wire
+compatibility with synthetic memory, not OS text injection or a physical keyboard.
+
 The server stops at the bounded duration (maximum one hour), Ctrl-C, or when its owner
 creates the regular file `stop` in the run directory. Shutdown closes the listener,
 releases recorded buttons, and removes `pairing.json`. Delete the **owned run directory**

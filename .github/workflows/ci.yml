@@ -291,7 +291,9 @@ jobs:
           test -x "$ANDROID_HOME/build-tools/35.0.0/aapt2"
       - name: Compile phone APK and device tests; run JVM checks and lint
         working-directory: android
-        run: ./gradlew --no-daemon --max-workers=2 :controller:assembleDebug :controller:assembleDebugAndroidTest :controller:testDebugUnitTest :controller:lintDebug
+        run: ./gradlew --no-daemon --max-workers=2 :controller:assembleDebug :controller:assembleDebugAndroidTest :controller:assembleRelease :controller:testDebugUnitTest :controller:lintDebug
+      - name: Validate release packaging safeguards
+        run: python3 -m unittest discover -s scripts/tests -p test_package_android_controller.py
       - name: Save development APK and software reports
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

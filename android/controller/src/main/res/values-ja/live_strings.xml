@@ -1,0 +1,17 @@
+<resources>
+    <string name="live_resume">入力欄を再読込</string>
+    <string name="live_reload_confirm">スマートフォンの文字をパソコンの現在の入力欄で置き換えますか？パソコンを確認してから続けてください。</string>
+    <string name="live_sync">リアルタイム同期</string>
+    <string name="live_loading">入力欄を読込中…</string>
+    <string name="live_syncing">同期中…</string>
+    <string name="live_paused">編集を一時停止しました。入力欄を確認して再読込してください。</string>
+    <string name="live_clear_confirm">パソコンの現在の入力欄を消去しますか？削除はすぐに同期されます。</string>
+    <string name="stop_dictation">音声入力を終了</string>
+    <string name="listening">聞き取り中…</string>
+    <string name="speech_error">音声入力が停止しました。文字を確認するか、キーボードのマイクをご利用ください。</string>
+    <string name="microphone_permission">音声入力にはマイクを許可してください。キーボードでも入力できます。</string>
+    <string name="gesture_settings">ジェスチャー</string>
+    <string name="tv_control_mode">テレビのタッチモード</string>
+    <string name="tv_navigation">方向リモコン</string>
+    <string name="tv_pointer">ポインター（受信アプリの対応が必要）</string>
+</resources>

@@ -77,6 +77,10 @@ public final class TouchSurfaceView extends View {
                 feedback(true);
                 if (listener != null) listener.back();
             }
+            @Override public void shortcut(GestureConfiguration.Action action) {
+                feedback(false);
+                if (listener != null) listener.shortcut(action);
+            }
         });
     }
 
@@ -87,6 +91,9 @@ public final class TouchSurfaceView extends View {
         engine.setTvMode(enabled);
         invalidate();
     }
+
+    public void setConfiguration(GestureConfiguration configuration) { engine.setConfiguration(configuration); invalidate(); }
+    public void setTvPointerMode(boolean enabled) { engine.setTvPointerMode(enabled); invalidate(); }
 
     public void cancelGesture() {
         if (engine != null) engine.cancel();
@@ -261,10 +268,7 @@ public final class TouchSurfaceView extends View {
         super.performClick();
         if (!isEnabled()) return false;
         fingerX = getWidth() / 2f; fingerY = getHeight() / 2f;
-        feedback(false);
-        if (listener != null) {
-            if (tvMode) listener.navigate("confirm"); else listener.click(false, 1);
-        }
+        engine.accessibilityClick();
         return true;
     }
 

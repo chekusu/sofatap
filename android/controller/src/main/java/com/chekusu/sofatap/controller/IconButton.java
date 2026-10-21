@@ -116,6 +116,12 @@ public final class IconButton extends View {
             case "left": polyline(canvas, 15, 5, 8, 12, 15, 19); break;
             case "right": polyline(canvas, 9, 5, 16, 12, 9, 19); break;
             case "send": polyline(canvas, 5, 11, 12, 4, 19, 11); line(canvas, 12, 4, 12, 21); break;
+            case "check": polyline(canvas, 5, 12, 10, 17, 20, 6); break;
+            case "refresh": canvas.drawArc(4, 4, 20, 20, 35, 290, false, paint); polyline(canvas, 15, 3, 21, 3, 21, 9); break;
+            case "settings":
+                canvas.drawCircle(12, 12, 6, paint); canvas.drawCircle(12, 12, 2, paint);
+                for (int i=0;i<8;i++) { double a=i*Math.PI/4; canvas.drawLine(12+(float)Math.cos(a)*6,12+(float)Math.sin(a)*6,12+(float)Math.cos(a)*9,12+(float)Math.sin(a)*9,paint); }
+                break;
             case "enter": polyline(canvas, 20, 5, 20, 14, 4, 14); polyline(canvas, 10, 8, 4, 14, 10, 20); break;
             case "trash":
                 line(canvas, 4, 6, 20, 6); line(canvas, 9, 3, 15, 3);

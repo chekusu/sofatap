@@ -77,6 +77,15 @@ public final class WireActions {
         return put(command("remote_pair_code"), "code", code.toUpperCase(Locale.ROOT));
     }
     public static JSONObject ping() { return command("ping"); }
+    public static JSONObject textBegin() { return command("textBegin"); }
+    public static JSONObject textEnd(String session) { return put(command("textEnd"), "session", ReceiverStatus.canonicalUuid(session)); }
+    public static JSONObject textSync(String session, int revision, LiveTextEditor.Snapshot snapshot) {
+        if (revision < 1 || snapshot == null || !snapshot.valid()) throw invalid();
+        JSONObject value = put(put(put(command("textSync"), "session", ReceiverStatus.canonicalUuid(session)), "revision", revision), "text", snapshot.text);
+        put(value, "selectionStart", snapshot.selectionStart); put(value, "selectionLength", snapshot.selectionLength);
+        if (value.toString().getBytes(StandardCharsets.UTF_8).length > 65_536) throw invalid();
+        return value;
+    }
 
     private static JSONObject motion(String type, double dx, double dy, int max) {
         if (!Double.isFinite(dx) || !Double.isFinite(dy) || Math.abs(dx) > max || Math.abs(dy) > max) throw invalid();

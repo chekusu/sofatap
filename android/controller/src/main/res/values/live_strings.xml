@@ -1,0 +1,17 @@
+<resources>
+    <string name="live_resume">Read field again</string>
+    <string name="live_reload_confirm">Replace the phone’s text with the current computer field? Check the computer before continuing.</string>
+    <string name="live_sync">Live sync</string>
+    <string name="live_loading">Reading field…</string>
+    <string name="live_syncing">Syncing…</string>
+    <string name="live_paused">Editing paused. Check the field, then read it again.</string>
+    <string name="live_clear_confirm">Clear the computer’s current field? This deletion syncs immediately.</string>
+    <string name="stop_dictation">Finish dictation</string>
+    <string name="listening">Listening…</string>
+    <string name="speech_error">Dictation stopped. Check the text or use your keyboard’s microphone.</string>
+    <string name="microphone_permission">Allow microphone access to dictate, or use the keyboard.</string>
+    <string name="gesture_settings">Gestures</string>
+    <string name="tv_control_mode">TV touch mode</string>
+    <string name="tv_navigation">Directional remote</string>
+    <string name="tv_pointer">Pointer (requires receiver support)</string>
+</resources>

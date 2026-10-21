@@ -10,6 +10,7 @@ public final class RemoteSession {
     public enum State { DISCONNECTED, CONNECTING, CONNECTED, RETRYING, BLOCKED }
     public enum Result { ACCEPTED, REJECTED, UNCERTAIN, SUPERSEDED }
     public interface Completion { void finish(Result result); }
+    interface ReplyCompletion { void finish(Result result, JSONObject acknowledgement); }
     public interface Listener { void changed(); }
     interface Channel { void connect(); boolean send(JSONObject value); void close(); }
     interface Factory { Channel create(Pairing pairing, PinnedSocket.Listener listener); }
@@ -19,6 +20,7 @@ public final class RemoteSession {
     public Pairing pairing;
     public ReceiverStatus status;
     public String failure = "";
+    public final LiveTextEditor liveText;
     private Listener listener;
     private final Factory factory;
     private final Scheduler scheduler;
@@ -31,9 +33,11 @@ public final class RemoteSession {
     private Pending pending;
     private static final int MAX_QUEUE = 24;
     private static final class Pending {
-        final JSONObject value; final Completion completion; final long createdAt;
-        Pending(JSONObject value, Completion completion,long createdAt) { this.value = value; this.completion = completion; this.createdAt=createdAt; }
+        final JSONObject value; final ReplyCompletion completion; final long createdAt; final int focusRevision;
+        Pending(JSONObject value, ReplyCompletion completion,long createdAt,int focusRevision) { this.value = value; this.completion = completion; this.createdAt=createdAt; this.focusRevision=focusRevision; }
         String type() { return value.optString("type"); }
+        void finish(Result result, JSONObject ack) { if (completion != null) completion.finish(result, ack); }
+        boolean liveEdit() { return type().equals("textBegin") || type().equals("textSync"); }
         boolean transientMotion() { return type().equals("move") || type().equals("scroll"); }
         boolean navigationRepeat() { return (type().equals("remote_key") || type().equals("key")) && java.util.Set.of("up","down","left","right").contains(value.optString("key")); }
     }
@@ -52,18 +56,20 @@ public final class RemoteSession {
     }
     RemoteSession(Factory factory, Scheduler scheduler, Persistence persistence, Listener listener, java.util.function.LongSupplier clock) {
         this.factory=factory; this.scheduler=scheduler; this.persistence=persistence; this.listener=listener;this.clock=clock;
+        liveText = new LiveTextEditor(this);
     }
     private void changed() { if (listener != null) listener.changed(); }
+    void liveTextChanged() { changed(); }
     public boolean connected() { return state == State.CONNECTED && status != null; }
     public void select(Pairing target, boolean newPairing) {
-        stop(); pairing=target; bootstrap=newPairing && target.isTv(); paused=false; blocked=false; attempt=0;
+        stop(); liveText.resetTarget(); pairing=target; bootstrap=newPairing && target.isTv(); paused=false; blocked=false; attempt=0;
         failure=""; if (foreground) open(); else changed();
     }
     public void resume() { foreground=true; if (pairing!=null && !paused && !blocked && channel==null) open(); }
     public void suspend() { foreground=false; stop(); changed(); }
     public void disconnect() { paused=true; stop(); changed(); }
     public void reconnect() { paused=false; blocked=false; attempt=0; if (foreground && pairing!=null) { stop(); open(); } }
-    public void forget() { stop(); pairing=null; paused=true; changed(); }
+    public void forget() { stop(); liveText.resetTarget(); pairing=null; paused=true; changed(); }
     private void stop() {
         ++generation;
         Channel old=channel; channel=null;
@@ -71,8 +77,9 @@ public final class RemoteSession {
         Pending sent=pending; pending=null;
         var abandoned=new ArrayDeque<>(queue); queue.clear();
         status=null; state=State.DISCONNECTED;
-        if(sent!=null && sent.completion!=null) sent.completion.finish(Result.UNCERTAIN);
-        for(Pending p:abandoned) if(p.completion!=null) p.completion.finish(Result.REJECTED);
+        liveText.disconnected();
+        if(sent!=null) sent.finish(Result.UNCERTAIN, null);
+        for(Pending p:abandoned) p.finish(Result.REJECTED, null);
     }
     private void open() {
         if(pairing==null || !foreground || paused || blocked) return;
@@ -117,8 +124,10 @@ public final class RemoteSession {
             String id=value.getString("id");
             if(pending==null || !id.equals(pending.value.getString("id"))) return;
             Pending done=pending;
+            ReceiverStatus previous=status;
             if(value.has("inputAvailable") || value.has("tvControls")) status=status.withUpdate(value);
             pending=null;
+            if(previous!=status) liveText.receiverChanged(previous,status);
             boolean ok=value.getBoolean("ok");
             String error=value.optString("error","");
             Result result=ok?Result.ACCEPTED:Result.REJECTED;
@@ -128,7 +137,7 @@ public final class RemoteSession {
                     error.equals("input_unavailable") || error.equals("unsupported_action") || error.equals("invalid_text");
                 if(!known) result=Result.UNCERTAIN;
             }
-            if(done.completion!=null) done.completion.finish(result);
+            done.finish(result, value);
             changed(); drain();
         } catch(Exception ignored) { failed(false); }
     }
@@ -140,13 +149,20 @@ public final class RemoteSession {
         }, pairing.isTv()?1000:1500);
     }
     public boolean send(JSONObject value,Completion completion) {
+        return sendWithAck(value, completion==null?null:(result,ack)->completion.finish(result));
+    }
+    boolean sendWithAck(JSONObject value,ReplyCompletion completion) {
         if(!connected() || !foreground || !allowed(value)) return false;
-        Pending added=new Pending(value,completion,clock.getAsLong());
+        String type=value.optString("type");
+        if(type.equals("text") && (liveText.imported() || liveText.state()==LiveTextEditor.State.PAUSED || liveText.state()==LiveTextEditor.State.STARTING)) return false;
+        if(!pairing.isTv() && type.equals("key") && !liveText.canSendKey()) return false;
+        if(type.equals("click") || type.equals("key") || type.equals("text") || type.equals("button") && value.optBoolean("down")) liveText.end();
+        Pending added=new Pending(value,completion,clock.getAsLong(),status.focusRevision);
         if(pairing.isTv() && (added.type().equals("remote_key") || added.type().equals("key"))) {
             // Focus navigation is an intent, not a backlog. A new direction/Back/Home/OK
             // supersedes all unsent directional repeats while retaining in-flight order.
             var it=queue.iterator();
-            while(it.hasNext()) { Pending old=it.next();if(old.navigationRepeat()){it.remove();if(old.completion!=null)old.completion.finish(Result.SUPERSEDED);} }
+            while(it.hasNext()) { Pending old=it.next();if(old.navigationRepeat()){it.remove();old.finish(Result.SUPERSEDED,null);} }
         }
         // Bound backpressure and coalesce only consecutive unsent motion, never across clicks/keys.
         Pending tail=queue.peekLast();
@@ -156,7 +172,7 @@ public final class RemoteSession {
                 value.put("dx",Math.max(-limit,Math.min(limit,value.getDouble("dx")+tail.value.getDouble("dx"))));
                 value.put("dy",Math.max(-limit,Math.min(limit,value.getDouble("dy")+tail.value.getDouble("dy"))));
                 queue.removeLast();
-                if(tail.completion!=null) tail.completion.finish(Result.SUPERSEDED);
+                tail.finish(Result.SUPERSEDED,null);
             } catch(Exception ignored) { return false; }
         }
         if(queue.size()>=MAX_QUEUE) {
@@ -166,11 +182,18 @@ public final class RemoteSession {
         }
         queue.add(added); drain(); return true;
     }
+    void cancelQueuedLiveText() {
+        var cancelled=new ArrayDeque<Pending>();
+        var iterator=queue.iterator();
+        while(iterator.hasNext()) { Pending item=iterator.next();if(item.liveEdit()){iterator.remove();cancelled.add(item);} }
+        for(Pending item:cancelled) item.finish(Result.SUPERSEDED,null);
+    }
     private boolean allowed(JSONObject action) {
         if(status==null || pairing==null) return false;
         String type=action.optString("type");
         if(type.equals("ping")) return true;
         if(!pairing.isTv()) {
+            if(type.equals("textEnd")) return true;
             if(!status.ready) return false;
             return switch(type) {
                 case "move" -> status.canMove;
@@ -179,6 +202,7 @@ public final class RemoteSession {
                 case "button" -> status.canDrag;
                 case "text" -> status.canText;
                 case "key" -> true;
+                case "textBegin", "textSync" -> status.supportsLiveText && !status.focusState.equals("protected") && !status.focusState.equals("other");
                 default -> false;
             };
         }
@@ -198,8 +222,9 @@ public final class RemoteSession {
         if(!connected() || pending!=null || queue.isEmpty()) return;
         Pending next=queue.removeFirst();
         boolean stale=(next.transientMotion() || pairing.isTv() && next.navigationRepeat()) && clock.getAsLong()-next.createdAt>350;
-        if(!allowed(next.value) || stale) {
-            if(next.completion!=null) next.completion.finish(stale?Result.SUPERSEDED:Result.REJECTED);
+        boolean fieldCommand=next.liveEdit() || !pairing.isTv() && (next.type().equals("text") || next.type().equals("key"));
+        if(!allowed(next.value) || stale || fieldCommand && next.focusRevision!=status.focusRevision) {
+            next.finish(stale?Result.SUPERSEDED:Result.REJECTED,null);
             drain(); return;
         }
         pending=next;

@@ -60,19 +60,29 @@ import okhttp3.tls.HeldCertificate;
 
 import static org.junit.Assert.*;
 
-/** Native runtime acceptance on an isolated Android emulator, never desktop input injection. */
+/** Native runtime acceptance on an isolated emulator or authorized handset, never desktop input injection. */
 @RunWith(AndroidJUnit4.class)
 public class ControllerDeviceTest {
     private final Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
     private ActivityScenario<MainActivity> scenario;
     private MockWebServer server;
     private String pairedIdentity;
+    private boolean liveFixture;
+    private android.content.SharedPreferences gesturePrefs;
+    private String previousGestureProfiles;
+    private final AtomicReference<String> remoteText = new AtomicReference<>("Hello 🌍 world");
     private final List<JSONObject> received = new CopyOnWriteArrayList<>();
     private final AtomicReference<JSONObject> fixtureHello = new AtomicReference<>();
     private final AtomicReference<JSONObject> statusOnAck = new AtomicReference<>();
 
     @Before public void prepare() throws Exception {
-        instrumentation.getUiAutomation().grantRuntimePermission("com.chekusu.sofatap", Manifest.permission.CAMERA);
+        if(instrumentation.getTargetContext().checkSelfPermission(Manifest.permission.CAMERA)!=android.content.pm.PackageManager.PERMISSION_GRANTED)
+            instrumentation.getUiAutomation().grantRuntimePermission(instrumentation.getTargetContext().getPackageName(), Manifest.permission.CAMERA);
+        gesturePrefs=instrumentation.getTargetContext().getSharedPreferences("sofatap.gesturePreferences.v1",Context.MODE_PRIVATE);
+        previousGestureProfiles=gesturePrefs.getString("profiles",null);
+        GesturePreferencesStore gestures=new GesturePreferencesStore(instrumentation.getTargetContext());
+        assertTrue(gestures.save(new GestureConfiguration(GestureConfiguration.Target.computer)));
+        assertTrue(gestures.save(new GestureConfiguration(GestureConfiguration.Target.television)));
         scenario = ActivityScenario.launch(MainActivity.class);
         scenario.onActivity(activity -> {
             activity.session.disconnect();
@@ -93,6 +103,7 @@ public class ControllerDeviceTest {
             scenario.close();
         }
         if (server != null) server.shutdown();
+        if(gesturePrefs!=null){var saved=gesturePrefs.edit();if(previousGestureProfiles==null)saved.remove("profiles");else saved.putString("profiles",previousGestureProfiles);assertTrue(saved.commit());}
     }
 
     @Test public void portraitLandscapeAndKeyboardKeepComposerUsable() throws Exception {
@@ -100,7 +111,7 @@ public class ControllerDeviceTest {
         awaitOrientation(Configuration.ORIENTATION_PORTRAIT);
         scenario.onActivity(a -> {
             a.editor.setText("保留草稿 · 日本語 · 🎮");
-            a.editor.setSelection(a.editor.length());
+            a.editor.setSelection(3,7);
             assertComposerGeometry(a);
         });
         screenshot("controller-portrait.png");
@@ -115,6 +126,7 @@ public class ControllerDeviceTest {
         awaitOrientation(Configuration.ORIENTATION_LANDSCAPE);
         scenario.onActivity(a -> {
             assertEquals("保留草稿 · 日本語 · 🎮", a.editor.getText().toString());
+            assertEquals(3,a.editor.getSelectionStart());assertEquals(7,a.editor.getSelectionEnd());
             assertComposerGeometry(a);
             assertTrue("touch area remains visible", a.surface.getHeight() > a.getResources().getDisplayMetrics().density * 90);
         });
@@ -122,6 +134,8 @@ public class ControllerDeviceTest {
         clickMainDescription(R.string.keyboard);
         await("landscape keyboard appears", () -> mainBoolean(ControllerDeviceTest::imeVisible));
         SystemClock.sleep(500);
+        screenshot("controller-landscape-keyboard-before-check.png");
+        scenario.onActivity(ControllerDeviceTest::logLandscapeGeometry);
         scenario.onActivity(ControllerDeviceTest::assertComposerGeometry);
         scenario.onActivity(ControllerDeviceTest::assertPadControlsSeparate);
         screenshot("controller-landscape-keyboard.png");
@@ -159,18 +173,9 @@ public class ControllerDeviceTest {
             a.editor.setText("追加：");
             a.editor.setSelection(a.editor.length());
         });
-        // The Android activity-result mechanism is real; only the external recognition service
-        // is stubbed. This tests result delivery, not microphone/audio recognition accuracy.
-        Intent result = new Intent();
-        result.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, new ArrayList<>(List.of("第二段语音 🛋️")));
-        Instrumentation.ActivityMonitor speech = instrumentation.addMonitor(
-                new IntentFilter(RecognizerIntent.ACTION_RECOGNIZE_SPEECH),
-                new Instrumentation.ActivityResult(Activity.RESULT_OK, result), true);
-        try {
-            clickMainDescription(R.string.dictate);
-            await("speech result appended to current draft", () -> mainBoolean(a -> "追加：第二段语音 🛋️".equals(a.editor.getText().toString())));
-            assertEquals(1, speech.getHits());
-        } finally { instrumentation.removeMonitor(speech); }
+        // Exercise transcript replacement with synthetic provider results. No microphone is activated.
+        scenario.onActivity(a -> {a.captureSpeechDraft();a.applySpeechResult("第二段");a.applySpeechResult("第二段语音 🛋️");});
+        await("corrected speech result replaces its hypothesis", () -> mainBoolean(a -> "追加：第二段语音 🛋️".equals(a.editor.getText().toString())));
         await("session active after speech UI", () -> mainBoolean(a -> a.session.connected()));
         clickMainDescription(R.string.send);
         await("new recognition result acknowledged and cleared", () -> mainBoolean(a -> a.editor.length() == 0));
@@ -182,6 +187,51 @@ public class ControllerDeviceTest {
         await("disconnection replaces stale Sent status", () -> mainBoolean(a -> !a.session.connected()
                 && hasText(a.getWindow().getDecorView(),a.getString(R.string.no_device))
                 && !hasText(a.getWindow().getDecorView(),a.getString(R.string.sent))));
+    }
+
+    @Test public void liveEditorSynchronizesSelectionCompositionBackspaceAndDictationWithoutSend() throws Exception {
+        liveFixture=true;String uri=startDesktopReceiver();scenario.onActivity(a->a.pair(uri));
+        await("live field imported",()->mainBoolean(a->a.session.liveText.ready()&&a.editor.getText().toString().equals("Hello 🌍 world")));
+        await("live keyboard ready",()->mainBoolean(ControllerDeviceTest::imeVisible));
+        scenario.onActivity(ControllerDeviceTest::hideKeyboard);
+        await("keyboard hidden before synthetic IME driver",()->mainBoolean(a->!imeVisible(a)));
+        SystemClock.sleep(350);
+        scenario.onActivity(a->{
+            assertEquals(6,a.editor.getSelectionStart());assertEquals(8,a.editor.getSelectionEnd());
+            android.view.inputmethod.InputConnection input=a.editor.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            assertNotNull(input);input.beginBatchEdit();input.setComposingText("ni",1);input.endBatchEdit();assertTrue("native composing span exists",a.editor.composing());
+        });
+        instrumentation.waitForIdleSync();SystemClock.sleep(150);
+        assertEquals("uncommitted IME syllables stay on phone; frames="+received,"Hello 🌍 world",remoteText.get());
+        scenario.onActivity(a->{
+            android.view.inputmethod.InputConnection input=a.editor.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            input.beginBatchEdit();input.commitText("你好",1);input.finishComposingText();input.endBatchEdit();
+        });
+        await("committed Chinese syncs automatically",()->remoteText.get().equals("Hello 你好 world"));
+        scenario.onActivity(a->{a.editor.setSelection(0,a.editor.length());a.editor.flushEdit();});
+        await("selection-only sync",()->received.stream().anyMatch(j->"textSync".equals(j.optString("type"))&&j.optInt("selectionStart")==0&&j.optInt("selectionLength")==14));
+        clickMainDescription(R.string.backspace);
+        await("selected field deletion",()->remoteText.get().isEmpty());
+        scenario.onActivity(a->{a.captureSpeechDraft();a.applySpeechResult("Hello");a.applySpeechResult("Hello 安卓 🎮");});
+        await("partial speech corrections sync without duplicate text",()->remoteText.get().equals("Hello 安卓 🎮"));
+        assertEquals("live field never uses append text",0,count("text"));
+        await("final live ACK",()->mainBoolean(a->a.session.liveText.state()==LiveTextEditor.State.ACTIVE));
+        scenario.onActivity(a->a.session.disconnect());
+        await("disconnect clears imported field",()->mainBoolean(a->a.editor.length()==0));
+    }
+
+    @Test public void emptyKeyboardDeleteIsSentExactlyOnce() throws Exception {
+        String uri=startDesktopReceiver();scenario.onActivity(a->a.pair(uri));
+        await("connected",()->mainBoolean(a->a.session.connected()));
+        scenario.onActivity(a->{
+            a.editor.requestFocus();
+            android.view.inputmethod.InputConnection input=a.editor.onCreateInputConnection(new android.view.inputmethod.EditorInfo());
+            input.sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_DOWN,android.view.KeyEvent.KEYCODE_DEL));
+            input.sendKeyEvent(new android.view.KeyEvent(android.view.KeyEvent.ACTION_UP,android.view.KeyEvent.KEYCODE_DEL));
+        });
+        await("one backspace arrives",()->received.stream().filter(j->"key".equals(j.optString("type"))&&"backspace".equals(j.optString("key"))).count()==1);
+        SystemClock.sleep(400);
+        assertEquals(1,received.stream().filter(j->"key".equals(j.optString("type"))&&"backspace".equals(j.optString("key"))).count());
     }
 
     @Test public void nativeTouchDispatchProducesMoveClickDragAndOppositeScrollFrames() throws Exception {
@@ -246,8 +296,10 @@ public class ControllerDeviceTest {
         String uri = startReceiver(true);
         scenario.onActivity(a -> a.pair(uri));
         await("TV hello authenticated", () -> mainBoolean(a -> a.session.connected()));
-        // A ready TV editor can auto-open the keyboard; compare layouts in the same hidden state.
-        scenario.onActivity(ControllerDeviceTest::hideKeyboard);
+        // Wait for the actual auto-open before hiding; hiding an already-hidden IME
+        // could otherwise race the pending first show on a physical phone.
+        await("TV editor keyboard appears", () -> mainBoolean(ControllerDeviceTest::imeVisible));
+        clickMainDescription(R.string.hide_keyboard);
         await("TV keyboard hides for navigation", () -> mainBoolean(a -> !imeVisible(a)));
         SystemClock.sleep(250);
         scenario.onActivity(a -> {
@@ -257,6 +309,9 @@ public class ControllerDeviceTest {
         });
         tapSurface(100, 180);
         await("TV tap confirms", () -> hasKey("remote_key", "confirm"));
+        long confirms=received.stream().filter(j->"remote_key".equals(j.optString("type"))&&"confirm".equals(j.optString("key"))).count();
+        scenario.onActivity(a->a.shortcut(GestureConfiguration.Action.confirm));
+        await("custom TV confirm is remote OK",()->received.stream().filter(j->"remote_key".equals(j.optString("type"))&&"confirm".equals(j.optString("key"))).count()==confirms+1);
         gesture(100, 180, 100, 130, 80);
         await("TV swipe navigates", () -> hasKey("remote_key", "up"));
         clickMainDescription(R.string.back);
@@ -285,7 +340,7 @@ public class ControllerDeviceTest {
         scenario.onActivity(a -> a.pair(uri));
         await("TV ready", () -> mainBoolean(a -> a.session.connected()));
         await("initial editor keyboard", () -> mainBoolean(ControllerDeviceTest::imeVisible));
-        scenario.onActivity(ControllerDeviceTest::hideKeyboard);
+        clickMainDescription(R.string.hide_keyboard);
         await("initial keyboard hidden", () -> mainBoolean(a -> !imeVisible(a)));
         clickMainDescription(R.string.guide);
         String epoch = "84d99b25-e490-4c40-847d-22d183a245e8";
@@ -319,10 +374,12 @@ public class ControllerDeviceTest {
                 ? "{\"type\":\"hello\",\"version\":1,\"name\":\"Acceptance TV\",\"platform\":\"androidtv\",\"inputAvailable\":true,\"inputStatus\":\"ready\",\"pairingToken\":\"" + "b".repeat(43) + "\",\"capabilities\":{\"overlayCursor\":true,\"nodeClick\":true,\"scroll\":true,\"back\":true,\"home\":true,\"directionalFocus\":true,\"text\":false,\"rawMouse\":false,\"rightClick\":false,\"drag\":false},\"tvControls\":{\"version\":1,\"navigationStatus\":\"ready\",\"textStatus\":\"ready\",\"editorEpoch\":\"a8e57498-a7d2-4a82-9d28-b34c830ac7db\"}}"
                 : "{\"type\":\"hello\",\"version\":1,\"name\":\"Acceptance computer\",\"platform\":\"windows\",\"inputAvailable\":true,\"inputStatus\":\"ready\",\"dryRun\":false}";
         fixtureHello.set(new JSONObject(hello));
+        if(liveFixture)fixtureHello.get().put("liveText",new JSONObject().put("version",1))
+            .put("textFocus",new JSONObject().put("state","editable").put("revision",1));
         MockResponse response = new MockResponse().withWebSocketUpgrade(new WebSocketListener() {
             @Override public void onOpen(WebSocket socket, Response ignored) {
                 try {
-                    JSONObject message = new JSONObject(hello);
+                    JSONObject message = new JSONObject(fixtureHello.get().toString());
                     if (tv && ("Bearer " + "b".repeat(43)).equals(ignored.request().header("Authorization"))) message.remove("pairingToken");
                     socket.send(message.toString());
                 } catch (Exception bad) { throw new AssertionError(bad); }
@@ -332,6 +389,12 @@ public class ControllerDeviceTest {
                     JSONObject action = new JSONObject(text);
                     if (!"ping".equals(action.optString("type"))) received.add(action);
                     JSONObject ack = new JSONObject().put("type","ack").put("id",action.getString("id")).put("ok",true);
+                    if(liveFixture&&("textBegin".equals(action.optString("type"))||"textSync".equals(action.optString("type")))){
+                        JSONObject live=new JSONObject().put("session","b2ad6b29-3918-46b7-b822-90c7ef0018b8");
+                        if("textBegin".equals(action.getString("type")))live.put("revision",0).put("text",remoteText.get()).put("selectionStart",6).put("selectionLength",2);
+                        else {remoteText.set(action.getString("text"));live.put("revision",action.getInt("revision")).put("text",action.getString("text")).put("selectionStart",action.getInt("selectionStart")).put("selectionLength",action.getInt("selectionLength"));}
+                        ack.put("liveText",live);
+                    }
                     JSONObject status = statusOnAck.get();
                     if(status!=null) for(String key : new String[]{"inputAvailable","inputStatus","dryRun","capabilities","tvControls","textFocus"})
                         if(status.has(key)) ack.put(key,status.get(key));
@@ -441,10 +504,34 @@ public class ControllerDeviceTest {
         assertTrue(send.getGlobalVisibleRect(sendBounds));
         assertTrue(activity.editor.getGlobalVisibleRect(fieldBounds));
         assertTrue(clear.getGlobalVisibleRect(clearBounds));
+        assertEquals("editor is fully visible",activity.editor.getHeight(),fieldBounds.height());
+        assertEquals("submit is fully visible",send.getHeight(),sendBounds.height());
+        assertEquals("draft tools are fully visible",clear.getHeight(),clearBounds.height());
         assertTrue("submit sits inside the editor", fieldBounds.contains(sendBounds));
         assertTrue("text has space reserved before submit", fieldBounds.right - activity.editor.getPaddingRight() <= sendBounds.left);
         assertTrue("draft tools are below the editor", clearBounds.top >= fieldBounds.bottom);
         assertTrue("tools must not overlap submit", !Rect.intersects(clearBounds, sendBounds));
+    }
+    private static void logLandscapeGeometry(MainActivity activity) {
+        View decor=activity.getWindow().getDecorView();
+        android.graphics.Point display=new android.graphics.Point();activity.getWindowManager().getDefaultDisplay().getRealSize(display);
+        android.view.WindowInsets insets=decor.getRootWindowInsets();
+        android.util.Log.i("SofatapLayoutTest","display="+display+" density="+activity.getResources().getDisplayMetrics().density+
+                " configuration="+activity.getResources().getConfiguration().screenWidthDp+"x"+activity.getResources().getConfiguration().screenHeightDp+
+                " bars="+(insets==null?null:insets.getInsets(android.view.WindowInsets.Type.systemBars()|android.view.WindowInsets.Type.displayCutout()))+
+                " ime="+(insets==null?null:insets.getInsets(android.view.WindowInsets.Type.ime()))+" imeVisible="+imeVisible(activity));
+        logViewGeometry("decor",decor);
+        View pad=(View)activity.surface.getParent();logViewGeometry("root",(View)pad.getParent());logViewGeometry("pad",pad);logViewGeometry("surface",activity.surface);
+        logViewGeometry("editor",activity.editor);
+        for(int id:new int[]{R.string.devices,R.string.add_device,R.string.guide,R.string.hide_keyboard,R.string.keyboard,R.string.dictate})
+            logViewGeometry(activity.getResources().getResourceEntryName(id),findDescription(decor,activity.getString(id)));
+    }
+    private static void logViewGeometry(String name,View view) {
+        if(view==null){android.util.Log.i("SofatapLayoutTest",name+" absent");return;}
+        int[] location=new int[2];view.getLocationOnScreen(location);Rect visible=new Rect();boolean shown=view.getGlobalVisibleRect(visible);
+        android.util.Log.i("SofatapLayoutTest",name+" actual="+new Rect(location[0],location[1],location[0]+view.getWidth(),location[1]+view.getHeight())+
+                " visible="+visible+" shown="+shown+" measured="+view.getMeasuredWidth()+"x"+view.getMeasuredHeight()+
+                " padding="+view.getPaddingLeft()+","+view.getPaddingTop()+","+view.getPaddingRight()+","+view.getPaddingBottom());
     }
     private static void assertPadControlsSeparate(MainActivity activity) {
         View root = activity.getWindow().getDecorView();
