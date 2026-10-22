@@ -41,6 +41,18 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     private String lastAutoEditor="", pendingAutoEditor;
     private int autoEditorGeneration, autoEditorAttempts;
     private boolean autoEditorScheduled;
+    private ExplicitKeyboardRequest explicitKeyboard;
+    private final class ExplicitKeyboardRequest {
+        final String target=activeDraftId;
+        final long draft=draftGeneration;
+        final Pairing pairing=session.pairing;
+        final boolean connected=session.connected();
+        final int focus=connected?session.status.focusRevision:-1;
+        final String editorEpoch=connected?session.status.editorEpoch:null;
+        String liveSession=session.liveText.sessionId();
+        int attempts;
+        boolean scheduled;
+    }
     private boolean resumed;
     private boolean compactStatusBar, restoreStatusBar;
     private int previousSystemBarsBehavior;
@@ -215,7 +227,7 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         InputMethodManager ime=(InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
         if(keyboardVisible){
             String target=currentEditorKey();if(target!=null)lastAutoEditor=target;
-            cancelAutoKeyboard();
+            cancelAutoKeyboard();explicitKeyboard=null;
             if(android.os.Build.VERSION.SDK_INT>=30&&editor.getWindowInsetsController()!=null)editor.getWindowInsetsController().hide(WindowInsets.Type.ime());
             ime.hideSoftInputFromWindow(editor.getWindowToken(),0);editor.clearFocus();
         }else {openLiveEditor();editor.requestFocus();showEditorKeyboard();}
@@ -297,6 +309,7 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     private void keyboardVisibilityObserved(){
         // Request acceptance is not proof that an OEM keyboard became visible.
         if(!keyboardVisible||editor==null||!editor.hasFocus()||!hasWindowFocus())return;
+        explicitKeyboard=null;
         String target=currentEditorKey();
         if(target!=null){lastAutoEditor=target;cancelAutoKeyboard();}
     }
@@ -306,11 +319,42 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         else ((InputMethodManager)getSystemService(INPUT_METHOD_SERVICE)).showSoftInput(editor,InputMethodManager.SHOW_IMPLICIT);
     }
     private void maybeShowKeyboard(){
+        maybeShowExplicitKeyboard();
+        if(explicitKeyboard!=null)return;
         String target=currentEditorKey();
         if(!resumed||editor==null||target==null||target.equals(lastAutoEditor)){cancelAutoKeyboard();return;}
         if(!target.equals(pendingAutoEditor)){cancelAutoKeyboard();pendingAutoEditor=target;}
         if(autoEditorScheduled||autoEditorAttempts>=4||scanDialog!=null||guideDialog!=null||!hasWindowFocus()||sending||speechBusy())return;
         scheduleAutoKeyboard(target,autoEditorGeneration,0);
+    }
+    private boolean explicitKeyboardTargetValid(ExplicitKeyboardRequest request){
+        if(!resumed||request.draft!=draftGeneration||!Objects.equals(request.target,activeDraftId)||request.pairing!=session.pairing)return false;
+        if(request.connected&&(!session.connected()||request.focus!=session.status.focusRevision||!Objects.equals(request.editorEpoch,session.status.editorEpoch)))return false;
+        if(session.liveText.state()==LiveTextEditor.State.PAUSED)return false;
+        if(request.liveSession!=null&&!Objects.equals(request.liveSession,session.liveText.sessionId()))return false;
+        if(request.liveSession==null&&session.liveText.ready())request.liveSession=session.liveText.sessionId();
+        return true;
+    }
+    private boolean explicitKeyboardCanShow(){
+        return editor!=null&&editor.isAttachedToWindow()&&editor.isEnabled()&&hasWindowFocus()&&scanDialog==null&&guideDialog==null&&!sending&&!speechBusy();
+    }
+    private void maybeShowExplicitKeyboard(){
+        ExplicitKeyboardRequest request=explicitKeyboard;
+        if(request==null)return;
+        if(!explicitKeyboardTargetValid(request)){explicitKeyboard=null;return;}
+        if(request.scheduled||request.attempts>=4||!explicitKeyboardCanShow())return;
+        request.scheduled=true;
+        editor.postDelayed(()->{
+            request.scheduled=false;
+            if(request!=explicitKeyboard)return;
+            if(!explicitKeyboardTargetValid(request)){explicitKeyboard=null;return;}
+            if(!explicitKeyboardCanShow())return;
+            editor.requestFocus();
+            // Gaining focus can itself start an asynchronous live import.
+            if(!explicitKeyboardCanShow())return;
+            request.attempts++;showEditorKeyboard();
+            if(request==explicitKeyboard&&request.attempts<4)maybeShowExplicitKeyboard();
+        },request.attempts==0?0:request.attempts==1?100:request.attempts==2?250:500);
     }
     private void scheduleAutoKeyboard(String target,int generation,long delay){
         autoEditorScheduled=true;
@@ -399,6 +443,7 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         if(dictation.active()){dictation.stop();return;}
         if(pendingDictation){cancelSpeech();updateState();return;}
         if(sending||session.liveText.state()==LiveTextEditor.State.PAUSED){toast(R.string.queue_busy);return;}
+        if(!dictation.available()){useKeyboardDictation();return;}
         if(checkSelfPermission(Manifest.permission.RECORD_AUDIO)!=PackageManager.PERMISSION_GRANTED){
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},MICROPHONE);return;
         }
@@ -408,11 +453,19 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
         if(!pendingDictation||!resumed)return;
         if(session.liveText.state()==LiveTextEditor.State.PAUSED){cancelSpeech();updateState();return;}
         pendingDictation=false;captureSpeechDraft();
-        if(!dictation.available()){cancelSpeech();toast(R.string.speech_missing);updateState();return;}
+        if(!dictation.available()){useKeyboardDictation();return;}
         dictation.start(new DictationSession.Listener(){
             public void transcript(String text,boolean finalResult){applySpeechResult(text);}
             public void finished(boolean error){speechBase=null;updateState();if(error)toast(R.string.speech_error);}
         });updateState();
+    }
+    private void useKeyboardDictation(){
+        cancelSpeech();cancelAutoKeyboard();lastAutoEditor="";
+        editor.flushEdit();openLiveEditor();
+        // An explicit request must survive live import even when the receiver
+        // has no focus metadata. Bind it to this device/session, not auto-focus.
+        explicitKeyboard=new ExplicitKeyboardRequest();updateState();
+        toast(R.string.speech_missing);
     }
     void captureSpeechDraft(){
         dictationTarget=activeDraftId;speechEditorKey=currentEditorKey();speechWasLive=session.liveText.ready();speechSessionId=session.liveText.sessionId();speechGeneration=draftGeneration;
@@ -473,7 +526,7 @@ public final class MainActivity extends Activity implements TouchSurfaceView.Lis
     @Override public void shortcut(GestureConfiguration.Action action){switch(action){
         case toggleKeyboard->toggleKeyboard();case toggleDictation->dictate();case confirm->{if(tv)navigate("confirm");else remoteEnter();}case back->navigate("back");case home->navigate("home");default->{} }}
     @Override protected void onResume(){super.onResume();resumed=true;if(root!=null)root.requestApplyInsets();if(session!=null)session.resume();if(scanner!=null&&checkSelfPermission(Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)scanner.resume();}
-    @Override protected void onPause(){resumed=false;cancelAutoKeyboard();restoreStatusBar();cancelSpeech();if(surface!=null)surface.cancelGesture();if(scanner!=null)scanner.pause();super.onPause();}
+    @Override protected void onPause(){resumed=false;explicitKeyboard=null;cancelAutoKeyboard();restoreStatusBar();cancelSpeech();if(surface!=null)surface.cancelGesture();if(scanner!=null)scanner.pause();super.onPause();}
     @Override protected void onStop(){if(session!=null)session.suspend();super.onStop();}
     @Override protected void onDestroy(){cancelAutoKeyboard();cancelSpeech();super.onDestroy();}
     @Override public void onConfigurationChanged(Configuration c){super.onConfigurationChanged(c);if(surface!=null)surface.cancelGesture();if(editor!=null)editor.flushEdit();buildUi();}

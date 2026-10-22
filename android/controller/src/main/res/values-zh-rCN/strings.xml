@@ -39,7 +39,7 @@
     <string name="not_sent">未发送，请检查目标输入框。</string>
     <string name="uncertain">发送结果不确定，请先检查设备，再决定是否重试。</string>
     <string name="review">我已检查设备</string>
-    <string name="speech_missing">未安装语音服务，可使用输入法的麦克风。</string>
+    <string name="speech_missing">系统语音服务不可用。若键盘有麦克风按钮，请点击它进行语音输入。</string>
     <string name="unsupported">当前设备暂不支持此操作。</string>
     <string name="queue_busy">请稍等设备完成操作。</string>
     <string name="pair_remote">连接电视遥控</string>

@@ -3,6 +3,7 @@ package com.chekusu.sofatap.controller;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.speech.RecognitionListener;
@@ -13,24 +14,44 @@ import java.util.Locale;
 
 /** Foreground, user-started system dictation. Audio and recognition belong to the installed provider. */
 final class DictationSession {
+    enum Backend { SYSTEM, ON_DEVICE, NONE }
+    interface Availability {
+        boolean system();
+        boolean onDevice();
+    }
     interface Listener {
         void transcript(String text,boolean finalResult);
         void finished(boolean error);
     }
     private final Context context;
+    private final Availability availability;
     private final Handler handler=new Handler(Looper.getMainLooper());
     private SpeechRecognizer recognizer;
     private Listener listener;
     private int generation;
     private boolean active,stopping;
-    DictationSession(Context context){this.context=context;}
-    boolean available(){return SpeechRecognizer.isRecognitionAvailable(context);}
+    DictationSession(Context context){this(context,new Availability(){
+        public boolean system(){return SpeechRecognizer.isRecognitionAvailable(context);}
+        public boolean onDevice(){return Build.VERSION.SDK_INT>=31&&SpeechRecognizer.isOnDeviceRecognitionAvailable(context);}
+    });}
+    DictationSession(Context context,Availability availability){this.context=context;this.availability=availability;}
+    static Backend selectBackend(int sdk,Availability availability){
+        // On-device recognition has an independent availability check from API 31.
+        // Keep the configured system provider when it is available.
+        try{if(availability.system())return Backend.SYSTEM;}catch(RuntimeException unavailable){}
+        if(sdk>=31)try{if(availability.onDevice())return Backend.ON_DEVICE;}catch(RuntimeException unavailable){}
+        return Backend.NONE;
+    }
+    private Backend backend(){return selectBackend(Build.VERSION.SDK_INT,availability);}
+    boolean available(){return backend()!=Backend.NONE;}
     boolean active(){return active;}
     void start(Listener next) {
         cancel();listener=next;active=true;stopping=false;
         final int current=++generation;
         try {
-            recognizer=SpeechRecognizer.createSpeechRecognizer(context);
+            Backend selected=backend();
+            if(selected==Backend.NONE){finish(true);return;}
+            recognizer=selected==Backend.ON_DEVICE&&Build.VERSION.SDK_INT>=31?SpeechRecognizer.createOnDeviceSpeechRecognizer(context):SpeechRecognizer.createSpeechRecognizer(context);
             recognizer.setRecognitionListener(new RecognitionListener() {
                 public void onReadyForSpeech(Bundle p) { }
                 public void onBeginningOfSpeech() { }

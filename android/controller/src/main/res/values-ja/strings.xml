@@ -39,7 +39,7 @@
     <string name="not_sent">未送信です。入力欄を確認してください。</string>
     <string name="uncertain">送信結果が不明です。デバイスを確認してから再試行してください。</string>
     <string name="review">デバイスを確認しました</string>
-    <string name="speech_missing">音声サービスがありません。キーボードのマイクをご利用ください。</string>
+    <string name="speech_missing">システムの音声入力を利用できません。キーボードにマイクボタンがあれば、タップしてご利用ください。</string>
     <string name="unsupported">このデバイスでは利用できません。</string>
     <string name="queue_busy">デバイスの応答をお待ちください。</string>
     <string name="pair_remote">テレビのリモコンを接続</string>

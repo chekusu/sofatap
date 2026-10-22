@@ -39,7 +39,7 @@
     <string name="not_sent">Not sent. Check the selected field.</string>
     <string name="uncertain">Delivery is uncertain. Check the device before retrying.</string>
     <string name="review">I checked the device</string>
-    <string name="speech_missing">No speech service is installed. You can use your keyboard’s microphone.</string>
+    <string name="speech_missing">No system speech service is available. Tap your keyboard’s microphone if it has one.</string>
     <string name="unsupported">This action is not available on the selected device.</string>
     <string name="queue_busy">Wait for the device to finish.</string>
     <string name="pair_remote">Connect TV remote</string>
