@@ -9,6 +9,7 @@
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
   <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+  <key>CADisableMinimumFrameDurationOnPhone</key><true/>
   <key>LSRequiresIPhoneOS</key><true/>
   <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>com.chekusu.sofatap.pair</string><key>CFBundleURLSchemes</key><array><string>sofatap</string></array></dict></array>
   <key>UILaunchScreen</key><dict/>
@@ -21,6 +22,7 @@
     <string>UIInterfaceOrientationLandscapeRight</string>
   </array>
   <key>NSCameraUsageDescription</key><string>Scan the QR code shown by Sofatap Receiver to pair with your computer or Android TV.</string>
+  <key>NSBonjourServices</key><array><string>_sofatap-peer._tcp</string></array>
   <key>NSLocalNetworkUsageDescription</key><string>Connect to your paired computer or supported TV on your home network for manual remote control.</string>
   <key>NSMicrophoneUsageDescription</key><string>When you tap the microphone, recognize speech on your iPhone. In live mode, recognized text is immediately sent to the computer; in draft mode, you review it before sending.</string>
   <key>NSSpeechRecognitionUsageDescription</key><string>Turn speech you record into text using on-device recognition. If your device or language is unsupported, use the keyboard instead.</string>

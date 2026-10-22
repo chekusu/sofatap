@@ -176,7 +176,9 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
         }).ToArray();
         return new { type = "state", name = Environment.MachineName, platform = ReceiverPlatform.Id,
             inputStatus = ReceiverPlatform.StatusCode(input, options.DryRun), dryRun = options.DryRun,
-            connected = _controller.CurrentCount == 0, pairings };
+            connected = _controller.CurrentCount == 0, pairings,
+            // Stable listener/certificate identity is independent of current LAN QR addresses.
+            peer = new { port = options.ControlPort, fingerprint = credentials.Fingerprint } };
     }
     private string[] LocalAddresses()
     {

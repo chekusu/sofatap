@@ -456,3 +456,15 @@
 "电视快捷操作" = "TV quick controls";
 "左右滑动切换操作" = "Swipe left or right to change controls";
 "操作页 %1$d，共 %2$d 页" = "Controls page %1$d of %2$d";
+
+"连接模式" = "Connection mode";
+
+"自动（优先直连）" = "Auto (prefer direct)";
+
+"普通 Wi-Fi" = "Regular Wi-Fi";
+
+"自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。" = "Auto prefers an available direct connection; otherwise it uses regular Wi-Fi. Switching modes reconnects and saves your choice.";
+
+"已连接 · 普通 Wi-Fi" = "Connected · Regular Wi-Fi";
+
+"已连接 · 设备直连" = "Connected · Device Direct";

@@ -1,6 +1,6 @@
 # Receiver updates
 
-Starting with desktop **0.8.0 beta.1** and Android/Google TV **0.2.0 beta.1**, packaged receivers include native update controls. Earlier receiver versions require one manual upgrade to acquire the updater. Installing an iPhone update does not update a computer or TV receiver.
+Desktop **0.8.1 beta.1** and Android/Google TV **0.2.0 beta.1** include native update controls. Earlier receiver versions require one manual upgrade to acquire the updater. The published Apple Silicon and Intel Mac feeds and notarized ZIPs have verified signatures. Installing an iPhone update does not update a computer or TV receiver.
 
 | Client | Check for updates | Automatic behavior | Installing |
 | --- | --- | --- | --- |

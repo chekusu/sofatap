@@ -20,6 +20,9 @@ final class ReceiverController: ObservableObject {
     @Published private(set) var accessRequested = false
     @Published private(set) var accessNotice: String?
 
+    private var peerRelay: MacPeerRelay?
+    private var peerRelayTask: Task<Void, Never>?
+    private var peerRelayKey: String?
     private var process: Process?
     private var generation = UUID()
     private var pipes: [Pipe] = []
@@ -31,6 +34,14 @@ final class ReceiverController: ObservableObject {
     private var stopTask: Task<Void, Never>?
     private var copyTask: Task<Void, Never>?
     private var stopCompletion: ((Bool) -> Void)?
+
+#if SOFATAP_RECEIVER_TESTING
+    func testPeerState(_ state: ReceiverState) { updatePeerRelay(state) }
+    var testPeerIdentity: ObjectIdentifier? { peerRelay.map(ObjectIdentifier.init) }
+    var testPeerKey: String? { peerRelayKey }
+    var testPeerReady: Bool { peerRelay?.isActive == true && peerRelayTask == nil }
+    func testHelperStopped() { cleanUp() }
+#endif
 
     var selectedPairing: ReceiverPairing? {
         state?.pairings.first { $0.host == selectedHost }
@@ -188,6 +199,7 @@ final class ReceiverController: ObservableObject {
         guard !isStopping else { return }
         guard let child = process, child.isRunning else { cleanUp(); completion(true); return }
         isStopping = true
+        stopPeerRelay()
         stopCompletion = completion
         state = nil
         selectedHost = nil
@@ -220,6 +232,7 @@ final class ReceiverController: ObservableObject {
         guard id == generation, process?.isRunning == true, !isStopping else { return }
         selectedHost = update.selectedHost(preserving: selectedHost)
         state = update
+        updatePeerRelay(update)
         failure = nil
         isStarting = false
         scheduleWatchdog(id: id)
@@ -251,7 +264,39 @@ final class ReceiverController: ObservableObject {
         else { fail(failure ?? "Mac 接收组件已停止。请重新检查，或退出后再打开 Sofatap。") }
     }
 
+    private func stopPeerRelay() {
+        peerRelayTask?.cancel(); peerRelayTask = nil
+        peerRelay?.stop(); peerRelay = nil
+        peerRelayKey = nil
+    }
+
+    private func updatePeerRelay(_ update: ReceiverState) {
+        guard MacPeerRelay.isEnabled(), let peer = update.peer else {
+            stopPeerRelay(); return
+        }
+        let port = peer.port, fingerprint = peer.fingerprint
+        let key = "\(port):\(fingerprint.lowercased())"
+        guard key != peerRelayKey || (peerRelayTask == nil && peerRelay?.isActive != true) else { return }
+        stopPeerRelay()
+        peerRelayKey = key
+        let relay = MacPeerRelay(backendPort: port, serviceName: "Sofatap-" + fingerprint.lowercased().prefix(40))
+        peerRelay = relay
+        peerRelayTask = Task { [weak self] in
+            do {
+                _ = try await relay.start()
+                guard !Task.isCancelled, let self, self.peerRelayKey == key else { relay.stop(); return }
+                self.peerRelayTask = nil
+            } catch {
+                relay.stop()
+                guard !Task.isCancelled, let self, self.peerRelayKey == key else { return }
+                // LAN remains available; retry discovery on the next receiver state.
+                self.stopPeerRelay()
+            }
+        }
+    }
+
     private func fail(_ message: String) {
+        stopPeerRelay()
         state = nil
         selectedHost = nil
         copied = false
@@ -260,6 +305,7 @@ final class ReceiverController: ObservableObject {
     }
 
     private func cleanUp() {
+        stopPeerRelay()
         generation = UUID()
         watchdog?.cancel()
         stopTask?.cancel()

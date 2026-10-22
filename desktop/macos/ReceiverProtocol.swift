@@ -103,6 +103,19 @@ struct ReceiverPairing: Decodable, Equatable, Sendable, Identifiable {
     }
 }
 
+/// Routing metadata from the private helper pipe, independent of LAN QR entries.
+struct ReceiverPeerIdentity: Decodable, Equatable, Sendable {
+    let port: UInt16
+    let fingerprint: String
+
+    func validate() throws {
+        guard port > 0, fingerprint.utf8.count == 64,
+              fingerprint.utf8.allSatisfy({ (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }) else {
+            throw ReceiverProtocolError.invalidState
+        }
+    }
+}
+
 struct ReceiverState: Decodable, Equatable, Sendable {
     let type: String
     let name: String
@@ -111,6 +124,7 @@ struct ReceiverState: Decodable, Equatable, Sendable {
     let dryRun: Bool
     let connected: Bool
     let pairings: [ReceiverPairing]
+    var peer: ReceiverPeerIdentity? = nil
 
     static func decode(_ data: Data) throws -> ReceiverState {
         guard data.count <= ReceiverLineBuffer.maximumFrameBytes else { throw ReceiverProtocolError.oversizedFrame }
@@ -121,6 +135,7 @@ struct ReceiverState: Decodable, Equatable, Sendable {
               Set(value.pairings.map(\.host)).count == value.pairings.count else {
             throw ReceiverProtocolError.invalidState
         }
+        try value.peer?.validate()
         try value.pairings.forEach { try $0.validate() }
         return value
     }

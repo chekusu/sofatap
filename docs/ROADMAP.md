@@ -1,15 +1,17 @@
 # Sofatap roadmap
 
-Updated October 16, 2026. This is the product direction, with acceptance goals rather than promised release dates.
+Updated October 21, 2026. This is the product direction, with acceptance goals rather than promised release dates.
 
 **Feature delivery order:** free manual TV control → paid voice automation on Windows/macOS/Linux → paid voice automation on TVs. Existing desktop maintenance and release acceptance continue separately. Do not integrate the paid agent runtime ahead of the free TV milestone.
 
 ## Free: manual control of computers and TVs
 
-The free product is an iPhone remote: the user moves, clicks, drags, scrolls and enters text. Basic voice-to-text remains part of this input experience. Dictating words into a field does not authorize an automated task.
+The free product is a phone remote: the user moves, clicks, drags, scrolls and enters text. The iPhone app is distributed separately from the Android phone/tablet 0.1.0-beta.1 direct-APK pre-release. Basic voice-to-text remains part of this input experience. Dictating words into a field does not authorize an automated task.
 
 1. **Current foundation — computers.** The iPhone app and receiver support manual control of Windows, macOS and supported Linux desktops. Text editing and input compatibility vary by platform and application; the [README](../README.md#platform-status) and [verification records](ACCEPTANCE.md) describe the actual scope. Keep improving these controls and their reliability.
 2. **Next manual-control expansion — direct TVs.** Connect the iPhone to a supported TV without a separate computer. Prioritize the **Android/Google TV receiver feasibility milestone**: one native receiver codebase, native pairing UI, explicit permission setup and independently measured pointer/click/scroll/text capabilities. A receiver APK is a packaging choice, not proof of global mouse input. Keep Remote v2 direction navigation separately labeled and the LG webOS preview as another adapter; LG qualification is not a prerequisite for Android work. See the [implementation stages](research/tv-implementation-plan.md#shared-architecture-and-release-gates).
+
+**Android phone controller expansion:** [`android/controller`](../android/controller/README.md), version **0.1.0-beta.1**, implements a native Android 8.0+ client for existing computer and Android/Google TV protocols. The current scope includes pairing and saved devices, separately persisted computer/TV gesture profiles with three presets and local practice, and desktop live text/selection/deletion when the receiver and focused field support it. Other computer fields and TV text use explicit draft sending. Foreground dictation requests partial results from the installed speech provider; its availability, result frequency and audio handling remain provider-dependent. Directional TV navigation and TV pointer control stay distinct. Direct APK distribution uses public package `com.chekusu.sofatap`, with `.dev` builds isolated for development; Google Play and self-update are not included. Lock-screen unlock, LG webOS, peer/Bluetooth routing and paid automation remain outside this Android client milestone. Physical handset-to-receiver acceptance must identify the actual phone, receiver and target application; software/emulator checks and existing iPhone results cannot substitute for it. This extends the free client platforms without changing the TV-before-automation delivery order.
 
 For every TV family, publish the tested model/OS/app matrix and distinguish these capabilities:
 

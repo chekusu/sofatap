@@ -1,0 +1,21 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Sofatap Receiver</title>
+        <item>
+            <title>0.8.1</title>
+            <pubDate>Mon, 19 Oct 2026 19:50:26 +0900</pubDate>
+            <link>https://sofatap.app</link>
+            <sparkle:channel>beta</sparkle:channel>
+            <sparkle:version>110</sparkle:version>
+            <sparkle:shortVersionString>0.8.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <enclosure url="https://github.com/chekusu/sofatap/releases/download/v0.8.1-beta.1/SofaTap-macOS-arm64-notarized.zip" length="44948700" type="application/octet-stream" sparkle:edSignature="RZ8L5DW+9LT8ugRfpnaisx+7ESBxN/Y8V4+dDTYTWxVUfzxmDCaUDPw+itOHkgtCSyILDCZYBDreNraRu94iDQ=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: G8bvKzMR3gnZrjR/uvRb5G9+GfhOjJ6DZngfneOJ6EbCsCnY2My2XjBZTYP2PiMkLXcS23HWtOH1UEgUM40XDA==
+length: 1248
+-->

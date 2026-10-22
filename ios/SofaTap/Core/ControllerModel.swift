@@ -5,6 +5,10 @@ import UIKit
 import CryptoKit
 import Darwin
 
+enum DesktopConnectionMode: String {
+    case automatic, wifi
+}
+
 enum TextDelivery: Equatable {
     case ready, sending, sent, rejected(String), uncertain
 }
@@ -67,6 +71,72 @@ final class ControllerModel: ObservableObject {
     private var socket: URLSessionWebSocketTask?
     private var session: URLSession?
     private var sessionDelegate: PinnedSessionDelegate?
+    private static let connectionModeKey = "sofatap.desktopConnectionMode.v1"
+    private var connectionDefaults: UserDefaults? = nil
+    @Published private(set) var connectionMode: DesktopConnectionMode = .automatic
+
+    @Published private(set) var peerConnectionAvailable = false
+    private var availabilityDiscovery: PeerTransportDiscovery?
+    private var availabilityGeneration = UUID()
+    private var availabilityPairing: Pairing?
+    private var availabilityMonitoringRequested = false
+
+    func startPeerAvailabilityMonitoring() {
+        availabilityMonitoringRequested = true
+        guard !demo, foreground, desktopControlEnabled, let pairing,
+              PeerTransportDiscovery.shouldAttempt(platform: pairing.platform) else {
+            resetPeerAvailabilityMonitoring(); return
+        }
+        if availabilityPairing == pairing {
+#if SOFATAP_CONTROLLER_TESTING
+            if testPeerAvailabilityMonitor != nil { return }
+#endif
+            if availabilityDiscovery?.isBrowsing == true { return }
+        }
+        resetPeerAvailabilityMonitoring()
+        availabilityPairing = pairing
+        let request = availabilityGeneration
+        let callback: (Bool) -> Void = { [weak self] available in
+            guard let self, self.availabilityGeneration == request,
+                  self.desktopControlEnabled, self.pairing == pairing else { return }
+            if self.peerConnectionAvailable != available { self.peerConnectionAvailable = available }
+        }
+#if SOFATAP_CONTROLLER_TESTING
+        if let testPeerAvailabilityMonitor { testPeerAvailabilityMonitor(callback); return }
+#endif
+        let discovery = PeerTransportDiscovery(serviceName: PeerTransportDiscovery.serviceName(fingerprint: pairing.fingerprint))
+        availabilityDiscovery = discovery
+        discovery.monitorAvailability(callback)
+    }
+
+    func stopPeerAvailabilityMonitoring() {
+        availabilityMonitoringRequested = false
+        resetPeerAvailabilityMonitoring()
+    }
+
+    private func resetPeerAvailabilityMonitoring() {
+        availabilityGeneration = UUID()
+        availabilityPairing = nil
+        availabilityDiscovery?.stop(); availabilityDiscovery = nil
+        peerConnectionAvailable = false
+    }
+
+    func setConnectionMode(_ mode: DesktopConnectionMode) {
+        guard connectionMode != mode else { return }
+        let reconnect = connected || connecting || reconnectID != nil
+        connectionMode = mode
+        if !demo { connectionDefaults?.set(mode.rawValue, forKey: Self.connectionModeKey) }
+        // A route change ends the gesture/session; no pending input crosses routes.
+        disconnect()
+        if reconnect && !demo { connect() }
+    }
+
+    var usesPeerTransport: Bool { connected && peerConnectionAttempt }
+    private var peerConnectionAttempt = false
+    private var preferLANForNextAttempt = false
+    private var routePreparation: Task<Void, Never>?
+    private var peerDiscovery: PeerTransportDiscovery?
+    private var peerBridge: PeerTLSBridge?
     private var generation = UUID()
     private var foreground = true
     private var manualConnectionPaused = false
@@ -78,7 +148,14 @@ final class ControllerModel: ObservableObject {
     private var keepAliveTask: Task<Void, Never>?
     private var helloTimeout: Task<Void, Never>?
     private var motionTimer: Timer?
-    private var motionBusy = false
+    private var movementFlights: [UUID: TimeInterval] = [:]
+    private var motionBusy: Bool { !movementFlights.isEmpty }
+    private static let movementLifetime = 0.12
+    // LAN can spend 80–100 ms awaiting ACKs even when touch delivery is 120 Hz.
+    // Twelve slots avoid an extra sender pause; the 120 ms oldest-flight gate
+    // still prevents unlimited backlog. Keep the measured peer window unchanged.
+    private var maximumMovementFlights: Int { peerConnectionAttempt ? 8 : 12 }
+    private var movementTime: TimeInterval { ProcessInfo.processInfo.systemUptime }
     // Keep the remote button down until its final queued movement is acknowledged.
     @Published private var dragReleasePending = false
     private var dragTail: (dx: Double, dy: Double)?
@@ -86,7 +163,7 @@ final class ControllerModel: ObservableObject {
     private var queuedDX = 0.0
     private var queuedDY = 0.0
     private var queuedScroll = 0.0
-    private var lastMovement = Date.distantPast
+    private var queuedMovementStart = -Double.infinity
     private var lastScroll = Date.distantPast
     private let motion = CMMotionManager()
     private struct Pending {
@@ -101,8 +178,10 @@ final class ControllerModel: ObservableObject {
     private var testSend: ((String, [String: Any], @escaping (Bool) -> Void) -> Void)?
     private var testPairingWrite: ((Pairing) throws -> DeviceLibrary<Pairing>)?
     private var testPairingConnect: ((Pairing) -> Void)?
+    private var testPrepareConnection: ((@escaping (UInt16?) -> Void) -> Void)?
     private var testPairingRead: (() throws -> DeviceLibrary<Pairing>)?
     private var testScheduleReconnect: ((TimeInterval, @escaping () -> Void) -> Void)?
+    private var testPeerAvailabilityMonitor: ((@escaping (Bool) -> Void) -> Void)?
     private var testWireSend: ((String) -> Void)?
     init(testPairingLibrary: DeviceLibrary<Pairing>,
          testPairingWrite: @escaping (Pairing) throws -> DeviceLibrary<Pairing>,
@@ -110,7 +189,10 @@ final class ControllerModel: ObservableObject {
          testPairingRead: (() throws -> DeviceLibrary<Pairing>)? = nil,
          testScheduleReconnect: ((TimeInterval, @escaping () -> Void) -> Void)? = nil,
          testInputSend: ((String, [String: Any], @escaping ([String: Any]) -> Void) -> Void)? = nil,
-         testWireSend: ((String) -> Void)? = nil) {
+         testWireSend: ((String) -> Void)? = nil,
+         testPrepareConnection: ((@escaping (UInt16?) -> Void) -> Void)? = nil,
+         testConnectionDefaults: UserDefaults? = nil,
+         testPeerAvailabilityMonitor: ((@escaping (Bool) -> Void) -> Void)? = nil) {
         demo = false; draftDefaults = nil; draft = ""
         pairing = testPairingLibrary.selected?.credential
         savedDevices = testPairingLibrary.devices; selectedDeviceID = testPairingLibrary.selectedID
@@ -118,6 +200,10 @@ final class ControllerModel: ObservableObject {
         self.testPairingRead = testPairingRead; self.testScheduleReconnect = testScheduleReconnect
         self.testLiveSend = testInputSend
         self.testWireSend = testWireSend
+        self.testPrepareConnection = testPrepareConnection
+        self.testPeerAvailabilityMonitor = testPeerAvailabilityMonitor
+        self.connectionDefaults = testConnectionDefaults
+        self.connectionMode = DesktopConnectionMode(rawValue: testConnectionDefaults?.string(forKey: Self.connectionModeKey) ?? "") ?? .automatic
         if testPairingRead != nil {
             pairing = nil; savedDevices = []; selectedDeviceID = nil
             pairingRestorationPending = true
@@ -148,7 +234,7 @@ final class ControllerModel: ObservableObject {
         guard let id = pending.first(where: { $0.value.type == type })?.key else { preconditionFailure("No pending command") }
         _ = handle(["type": "ack", "id": id, "ok": true])
     }
-    init(testSend: @escaping (String, [String: Any], @escaping (Bool) -> Void) -> Void) {
+    init(testPeer: Bool = false, testSend: @escaping (String, [String: Any], @escaping (Bool) -> Void) -> Void) {
         demo = false
         draftDefaults = nil
         pairing = nil
@@ -156,6 +242,7 @@ final class ControllerModel: ObservableObject {
         connected = true
         inputAvailable = true
         self.testSend = testSend
+        self.peerConnectionAttempt = testPeer
     }
     init(testLiveSend: @escaping (String, [String: Any], @escaping ([String: Any]) -> Void) -> Void,
          draftDefaults: UserDefaults? = nil) {
@@ -166,6 +253,12 @@ final class ControllerModel: ObservableObject {
         self.testLiveSend = testLiveSend
         restoreDeliveryReceipt()
     }
+    convenience init(testRecordingWire: @escaping (String) -> Void) {
+        self.init(testLiveSend: { _, _, _ in })
+        testLiveSend = nil
+        testWireSend = testRecordingWire
+    }
+    func testReceiveAcknowledgement(_ message: [String: Any]) -> Bool { handle(message) }
     func testFlushMovement() { flushMovement() }
     func testReceiveFocus(_ revision: Int, editable: Bool = true, kind: RemoteTextFocus? = nil) {
         var state = receiverState; state.focusRevision = revision; state.textFocus = kind ?? (editable ? .editable : .other)
@@ -181,6 +274,8 @@ final class ControllerModel: ObservableObject {
 
     init(demo: Bool = ProcessInfo.processInfo.arguments.contains("--demo")) {
         self.demo = demo
+        self.connectionDefaults = demo ? nil : .standard
+        self.connectionMode = DesktopConnectionMode(rawValue: connectionDefaults?.string(forKey: Self.connectionModeKey) ?? "") ?? .automatic
         self.desktopControlEnabled = demo || !["webos", "androidtv"].contains(UserDefaults.standard.string(forKey: "manualRemoteTarget") ?? "computer")
         self.pairing = nil
         self.draft = demo ? String(localized: "你好，帮我播放今晚想看的电影。") : UserDefaults.standard.string(forKey: "localTextDraft") ?? ""
@@ -304,6 +399,7 @@ final class ControllerModel: ObservableObject {
     }
 
     private func prepareForDeviceSwitch() {
+        stopPeerAvailabilityMonitoring()
         disconnect()
         // A receipt belongs to its original receiver. An old callback must not
         // mark a new device's draft sent or suppress an acknowledged prefix.
@@ -466,6 +562,7 @@ final class ControllerModel: ObservableObject {
         unlock.becameActive()
         foreground = true
         if !demo { restoreSavedSelection() }
+        if availabilityMonitoringRequested { startPeerAvailabilityMonitoring() }
         if reconnectID == nil { connectAutomatically() }
     }
 
@@ -474,7 +571,7 @@ final class ControllerModel: ObservableObject {
             if !enabled { rememberManualTarget(televisionTarget: televisionTarget) }
             return
         }
-        if !enabled { disconnect(message: String(localized: "电脑遥控已暂停，当前选择电视。")) }
+        if !enabled { stopPeerAvailabilityMonitoring(); disconnect(message: String(localized: "电脑遥控已暂停，当前选择电视。")) }
         desktopControlEnabled = enabled
         rememberManualTarget(televisionTarget: televisionTarget)
         if enabled && reconnect { becameActive() }
@@ -492,6 +589,7 @@ final class ControllerModel: ObservableObject {
         unlock.becameInactive()
         guard foreground else { return }
         foreground = false
+        resetPeerAvailabilityMonitoring()
         stopAirMouse()
         if demo { dragging = false; return }
         disconnect(message: String(localized: "切回 App 会重新连接；草稿已留在手机上。"))
@@ -533,10 +631,63 @@ final class ControllerModel: ObservableObject {
         inputAvailable = false
         receiverState = ReceiverState()
         notice = String(localized: "正在验证电脑证书与配对凭据…")
+        let skipPeer = connectionMode == .wifi || preferLANForNextAttempt
+        preferLANForNextAttempt = false
+#if SOFATAP_CONTROLLER_TESTING
+        if !skipPeer, let testPrepareConnection {
+            testPrepareConnection { [weak self] port in
+                self?.openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                                                  generation: currentGeneration, loopbackPort: port)
+            }
+            return
+        }
+        if testPairingConnect != nil {
+            openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                                        generation: currentGeneration, loopbackPort: nil)
+            return
+        }
+#endif
+        if !skipPeer, PeerTransportDiscovery.shouldAttempt(platform: pairing.platform) {
+            let discovery = PeerTransportDiscovery(serviceName: PeerTransportDiscovery.serviceName(fingerprint: pairing.fingerprint))
+            peerDiscovery = discovery
+            routePreparation = Task { [weak self] in
+                do {
+                    let peer = try await discovery.find()
+                    try Task.checkCancellation()
+                    guard let self, self.generation == currentGeneration else { discovery.stop(); return }
+                    let bridge = PeerTLSBridge(endpoint: peer)
+                    self.peerBridge = bridge
+                    let port = try await bridge.start()
+                    try Task.checkCancellation()
+                    guard self.generation == currentGeneration else { bridge.stop(); discovery.stop(); return }
+                    self.routePreparation = nil
+                    self.openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                                                     generation: currentGeneration, loopbackPort: port)
+                } catch {
+                    discovery.stop()
+                    guard !Task.isCancelled, let self, self.generation == currentGeneration else { return }
+                    self.peerBridge?.stop(); self.peerBridge = nil
+                    self.peerDiscovery = nil; self.routePreparation = nil
+                    // Discovery failed before any authenticated session or input.
+                    self.openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                                                     generation: currentGeneration, loopbackPort: nil)
+                }
+            }
+            return
+        }
+        openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                                    generation: currentGeneration, loopbackPort: nil)
+    }
+
+    private func openAuthenticatedConnection(pairing: Pairing, endpoint: URL,
+                                             generation currentGeneration: UUID, loopbackPort: UInt16?) {
+        guard generation == currentGeneration, connecting, foreground, self.pairing == pairing else { return }
+        peerConnectionAttempt = loopbackPort != nil
 #if SOFATAP_CONTROLLER_TESTING
         if let testPairingConnect { testPairingConnect(pairing); return }
 #endif
-        let delegate = PinnedSessionDelegate(pairing: pairing)
+        let transportEndpoint = loopbackPort.flatMap { URL(string: "wss://127.0.0.1:\($0)/control") } ?? endpoint
+        let delegate = PinnedSessionDelegate(pairing: pairing, loopbackPort: loopbackPort)
         sessionDelegate = delegate
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
@@ -546,7 +697,7 @@ final class ControllerModel: ObservableObject {
         configuration.urlCache = nil
         let newSession = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         session = newSession
-        var request = URLRequest(url: endpoint)
+        var request = URLRequest(url: transportEndpoint)
         request.setValue("Bearer \(pairing.token)", forHTTPHeaderField: "Authorization")
         let task = newSession.webSocketTask(with: request)
         socket = task
@@ -599,7 +750,11 @@ final class ControllerModel: ObservableObject {
         guard generation == failedGeneration else { return }
         // Disconnect invalidates every pending input; reconnect restores only the
         // authenticated transport, never an unacknowledged gesture or text frame.
+        // A failed peer route should not delay recovery by rediscovering the same
+        // unavailable path, even when it previously completed authentication.
+        let retryWithLAN = retryable && peerConnectionAttempt
         disconnect(message: message, preservingRetryAttempt: true)
+        preferLANForNextAttempt = retryWithLAN
         if retryable { scheduleReconnect() }
         else { automaticReconnectBlocked = true }
     }
@@ -633,6 +788,8 @@ final class ControllerModel: ObservableObject {
 
     func disconnect(message: String = String(localized: "已断开连接。"), preservingRetryAttempt: Bool = false) {
         cancelReconnect(resetAttempt: !preservingRetryAttempt)
+        peerConnectionAttempt = false
+        preferLANForNextAttempt = false
         invalidateLiveText(pause: liveTextSession != nil || liveTextStatus == .starting)
         stopAirMouse()
         motionTimer?.invalidate()
@@ -652,6 +809,9 @@ final class ControllerModel: ObservableObject {
         dragReleasePending = false
         dragTail = nil
         generation = UUID()
+        routePreparation?.cancel(); routePreparation = nil
+        peerBridge?.stop(); peerBridge = nil
+        peerDiscovery?.stop(); peerDiscovery = nil
         let oldSocket = socket
         let oldSession = session
         socket = nil
@@ -661,7 +821,7 @@ final class ControllerModel: ObservableObject {
         connecting = false
         inputAvailable = false
         receiverState = ReceiverState()
-        motionBusy = false
+        movementFlights.removeAll()
         scrollBusy = false
         queuedDX = 0; queuedDY = 0; queuedScroll = 0
         let oldPending = pending.values
@@ -674,8 +834,14 @@ final class ControllerModel: ObservableObject {
 
     private func receiveNext(_ task: URLSessionWebSocketTask, generation currentGeneration: UUID) {
         task.receive { [weak self] result in
+#if DEBUG
+            let receivedAt = ProcessInfo.processInfo.systemUptime
+#endif
             Task { @MainActor in
                 guard let self, self.generation == currentGeneration else { return }
+#if DEBUG
+                PointerTiming.shared.sample("receiveMainWait", seconds: self.movementTime - receivedAt)
+#endif
                 switch result {
                 case .failure(let error):
                     let diagnostic = self.sessionDelegate?.rejectionReason
@@ -748,19 +914,21 @@ final class ControllerModel: ObservableObject {
             }
             if ok { item.completion?(.accepted(message)) }
             else {
-                // Show a bounded generic code, not server-controlled arbitrary text or echoed drafts.
+                // Preserve an allowlisted machine code for control flow. Display text
+                // stays bounded and never includes server-controlled suffixes or drafts.
                 let rawCode = (message["error"] as? String)?.split(separator: ":", maxSplits: 1).first.map(String.init)
                 let code = rawCode.flatMap { value -> String? in
-                    let allowed = ["input_unavailable", "invalid_frame", "input_failed", "unsupported_key", "too_large", "invalid_message", "rate_limited", "live_text_unsupported", "live_text_conflict", "live_text_changed", "live_text_uncertain", "live_text_invalid"]
+                    let allowed = ["input_busy", "input_unavailable", "invalid_frame", "input_failed", "unsupported_key", "too_large", "invalid_message", "rate_limited", "live_text_unsupported", "live_text_conflict", "live_text_changed", "live_text_uncertain", "live_text_invalid"]
                     return allowed.contains(value) ? value : nil
-                } ?? String(localized: "操作未完成")
+                } ?? "unknown_error"
                 // A failed injection can have typed a prefix. Unknown errors are conservative.
                 let definitelyRejected = ["input_unavailable", "invalid_frame", "input_failed", "unsupported_key", "too_large", "invalid_message", "rate_limited", "live_text_unsupported", "live_text_conflict", "live_text_changed", "live_text_uncertain", "live_text_invalid"].contains(rawCode ?? "")
                 if item.type == "text" && !definitelyRejected {
                     notice = String(localized: "电脑未完整确认操作，文字可能已经部分输入。请先查看电脑屏幕。")
                     item.completion?(.uncertain)
                 } else {
-                    notice = String(localized: "电脑未接受操作：\(code)")
+                    let displayCode = code == "unknown_error" ? String(localized: "操作未完成") : code
+                    notice = String(localized: "电脑未接受操作：\(displayCode)")
                     item.completion?(.rejected(code))
                 }
             }
@@ -774,7 +942,7 @@ final class ControllerModel: ObservableObject {
         if testPairingConnect != nil { return }
 #endif
         let currentGeneration = generation
-        let timer = Timer(timeInterval: 1.0 / 45.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.flushMovement() }
         }
         motionTimer = timer
@@ -860,15 +1028,25 @@ final class ControllerModel: ObservableObject {
                         retryable: true, generation: currentGeneration)
     }
 
+    /// UIKit already paces touch delivery. Sending here avoids beating that clock
+    /// against an independent timer (and saves up to one timer interval of latency).
+    /// The bounded window still coalesces motion when the receiver falls behind.
+    func moveFromTouch(dx: Double, dy: Double) {
+        move(dx: dx, dy: dy)
+        flushMovement()
+    }
+
     func move(dx: Double, dy: Double) {
         guard canControl, dx.isFinite, dy.isFinite else { return }
         if demo { return }
-        // Keep only a small fresh movement window; there is never an unbounded gesture queue.
-        if Date().timeIntervalSince(lastMovement) > 0.12 { queuedDX = 0; queuedDY = 0 }
-        // While an ACK is outstanding retain the latest sample, not a delayed cursor jump.
-        queuedDX = max(-500, min(500, (motionBusy ? 0 : queuedDX) + dx * sensitivity))
-        queuedDY = max(-500, min(500, (motionBusy ? 0 : queuedDY) + dy * sensitivity))
-        lastMovement = Date()
+        // Relative distances must accumulate even while earlier packets await ACK.
+        // Bound the age of the entire unsent batch, not just its newest sample.
+        let now = movementTime
+        if now - queuedMovementStart > Self.movementLifetime || abs(queuedDX) + abs(queuedDY) <= 0.01 {
+            queuedDX = 0; queuedDY = 0; queuedMovementStart = now
+        }
+        queuedDX = max(-500, min(500, queuedDX + dx * sensitivity))
+        queuedDY = max(-500, min(500, queuedDY + dy * sensitivity))
     }
 
     func scroll(dy: Double) {
@@ -880,20 +1058,29 @@ final class ControllerModel: ObservableObject {
 
     private func flushMovement() {
         guard canControl else { queuedDX = 0; queuedDY = 0; queuedScroll = 0; return }
-        if !motionBusy, abs(queuedDX) + abs(queuedDY) > 0.01 {
+        let now = movementTime
+        if now - queuedMovementStart > Self.movementLifetime {
+#if DEBUG
+            if abs(queuedDX) + abs(queuedDY) > 0.01 { PointerTiming.shared.count("expiredMovementBatches") }
+#endif
+            queuedDX = 0; queuedDY = 0
+        }
+        let hasQueuedMovement = abs(queuedDX) + abs(queuedDY) > 0.01
+        // Share the bounded-window decision with diagnostics, avoiding a second
+        // scan per touch/ACK while keeping the same limits and age boundary.
+        let windowBlocked = movementFlights.count >= maximumMovementFlights ||
+            movementFlights.values.contains { now - $0 > Self.movementLifetime }
+#if DEBUG
+        if hasQueuedMovement && windowBlocked { PointerTiming.shared.count("movementWindowBlocked") }
+#endif
+        // Stop adding packets when the oldest outstanding move has stalled.
+        if hasQueuedMovement && !windowBlocked {
+#if DEBUG
+            PointerTiming.shared.sample("unsentAge", seconds: now - queuedMovementStart)
+#endif
             let dx = queuedDX, dy = queuedDY
             queuedDX = 0; queuedDY = 0
-            if Date().timeIntervalSince(lastMovement) <= 0.12 {
-                motionBusy = true
-                let currentGeneration = generation
-                send("move", fields: ["dx": dx, "dy": dy], timeout: 4) { [weak self] result in
-                    guard let self, self.generation == currentGeneration else { return }
-                    self.motionBusy = false
-                    guard self.dragReleasePending else { return }
-                    if case .accepted = result { self.finishDragRelease() }
-                    else { self.disconnect(message: String(localized: "拖拽移动未得到确认，已断开并释放鼠标。")) }
-                }
-            }
+            sendMovement(dx: dx, dy: dy)
         }
         if !scrollBusy, abs(queuedScroll) > 0.01 {
             let dy = queuedScroll
@@ -901,6 +1088,38 @@ final class ControllerModel: ObservableObject {
             if Date().timeIntervalSince(lastScroll) <= 0.12 {
                 scrollBusy = true
                 send("scroll", fields: ["dx": 0, "dy": dy], timeout: 4) { [weak self] _ in self?.scrollBusy = false }
+            }
+        }
+    }
+
+    private func sendMovement(dx: Double, dy: Double) {
+        let flight = UUID(), currentGeneration = generation
+        let sentDuringDrag = dragging || dragReleasePending
+        movementFlights[flight] = movementTime
+#if DEBUG
+        PointerTiming.shared.pulse("sendInterval")
+        PointerTiming.shared.count("sentMoves")
+#endif
+        send("move", fields: ["dx": dx, "dy": dy], timeout: 4) { [weak self] result in
+            guard let self, self.generation == currentGeneration else { return }
+#if DEBUG
+            if let sent = self.movementFlights[flight] {
+                PointerTiming.shared.sample("moveRoundTrip", seconds: self.movementTime - sent)
+            }
+#endif
+            self.movementFlights.removeValue(forKey: flight)
+            if case .accepted = result {
+                if self.dragReleasePending { self.finishDragRelease() }
+                else { self.flushMovement() }
+            } else if case .rejected(let reason) = result,
+                      reason == "input_busy", !sentDuringDrag,
+                      !self.dragging, !self.dragReleasePending {
+                // The receiver explicitly refused before posting an event. Keep
+                // the session for a fresh gesture, never replay the queued batch.
+                self.queuedDX = 0; self.queuedDY = 0
+                self.queuedMovementStart = self.movementTime
+            } else {
+                self.disconnect(message: String(localized: "拖拽移动未得到确认，已断开并释放鼠标。"))
             }
         }
     }
@@ -942,13 +1161,7 @@ final class ControllerModel: ObservableObject {
         let currentGeneration = generation
         if let tail = dragTail {
             dragTail = nil
-            motionBusy = true
-            send("move", fields: ["dx": tail.dx, "dy": tail.dy], timeout: 4) { [weak self] result in
-                guard let self, self.generation == currentGeneration else { return }
-                self.motionBusy = false
-                if case .accepted = result { self.finishDragRelease() }
-                else { self.disconnect(message: String(localized: "拖拽移动未得到确认，已断开并释放鼠标。")) }
-            }
+            sendMovement(dx: tail.dx, dy: tail.dy)
         } else {
             send("button", fields: ["button": "left", "down": false]) { [weak self] result in
                 guard let self, self.generation == currentGeneration else { return }

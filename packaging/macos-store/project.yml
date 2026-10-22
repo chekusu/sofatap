@@ -36,6 +36,7 @@ targets:
         LSUIElement: false
         NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
+        NSBonjourServices: ["_sofatap-peer._tcp"]
         NSLocalNetworkUsageDescription: Sofatap receives mouse and keyboard commands from your paired iPhone over your local network.
         NSHumanReadableCopyright: Copyright © CHEKUSU INC. Sofatap is available under the MIT license.
         ITSAppUsesNonExemptEncryption: false

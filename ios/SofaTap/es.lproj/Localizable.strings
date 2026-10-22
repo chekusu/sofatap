@@ -452,3 +452,15 @@
 "电视快捷操作" = "Controles rápidos del televisor";
 "左右滑动切换操作" = "Desliza a izquierda o derecha para cambiar de controles";
 "操作页 %1$d，共 %2$d 页" = "Página de controles %1$d de %2$d";
+
+"连接模式" = "Modo de conexión";
+
+"自动（优先直连）" = "Auto (priorizar directa)";
+
+"普通 Wi-Fi" = "Wi-Fi normal";
+
+"自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。" = "El modo automático prioriza la conexión directa disponible; si no, usa Wi-Fi normal. Cambiar de modo vuelve a conectar y guarda tu elección.";
+
+"已连接 · 普通 Wi-Fi" = "Conectado · Wi-Fi normal";
+
+"已连接 · 设备直连" = "Conectado · Conexión directa";

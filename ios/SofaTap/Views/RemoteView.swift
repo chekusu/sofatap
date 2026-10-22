@@ -359,7 +359,8 @@ struct RemoteView: View {
         if televisionSelected { return tv.title }
         if model.demo { return String(localized: "界面演示") }
         if model.connecting { return String(localized: "正在安全连接…") }
-        if model.connected { return model.inputAvailable ? String(localized: "已连接") : model.receiverState.unavailableTitle }
+        if model.connected && model.inputAvailable && model.usesPeerTransport { return String(localized: "已连接 · 设备直连") }
+        if model.connected { return model.inputAvailable ? String(localized: "已连接 · 普通 Wi-Fi") : model.receiverState.unavailableTitle }
         return String(localized: "未连接")
     }
 
@@ -446,7 +447,7 @@ struct RemoteView: View {
                          onMove: { dx, dy in
                              if androidTVSelected { androidTV.move(dx: dx, dy: dy) }
                              else if televisionSelected { tv.move(dx: dx, dy: dy) }
-                             else { model.move(dx: dx, dy: dy) }
+                             else { model.moveFromTouch(dx: dx, dy: dy) }
                          },
                          onLeftTap: { if androidTVSelected { androidTV.click() } else if televisionSelected { tv.click() } else { model.click("left") } },
                          onRightTap: { if !televisionSelected { model.click("right") } },

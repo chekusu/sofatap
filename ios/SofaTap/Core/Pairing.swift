@@ -125,13 +125,18 @@ enum PairingStore {
 /// The scanned certificate becomes an anchor for this challenge only, never a system CA.
 final class PinnedSessionDelegate: NSObject, URLSessionTaskDelegate {
     private let pairing: Pairing
+    private let loopbackPort: UInt16?
     private let diagnosticLock = NSLock()
     private var failure: String?
     var rejectionReason: String? {
         diagnosticLock.lock(); defer { diagnosticLock.unlock() }
         return failure
     }
-    init(pairing: Pairing) { self.pairing = pairing }
+    // A bridge changes only the transport endpoint. Certificate identity stays
+    // bound to the original pairing, including hostname, validity and leaf pin.
+    init(pairing: Pairing, loopbackPort: UInt16? = nil) {
+        self.pairing = pairing; self.loopbackPort = loopbackPort
+    }
 
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse,
@@ -148,8 +153,8 @@ final class PinnedSessionDelegate: NSObject, URLSessionTaskDelegate {
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust else { reject("TLS_METHOD"); return }
-        guard challenge.protectionSpace.host.lowercased() == pairing.host else { reject("TLS_HOST"); return }
-        guard challenge.protectionSpace.port == pairing.port else { reject("TLS_PORT_\(challenge.protectionSpace.port)"); return }
+        guard challenge.protectionSpace.host.lowercased() == (loopbackPort == nil ? pairing.host : "127.0.0.1") else { reject("TLS_HOST"); return }
+        guard challenge.protectionSpace.port == (loopbackPort.map(Int.init) ?? pairing.port) else { reject("TLS_PORT_\(challenge.protectionSpace.port)"); return }
         guard let trust = challenge.protectionSpace.serverTrust else { reject("TLS_TRUST_MISSING"); return }
         guard let certificates = SecTrustCopyCertificateChain(trust) as? [SecCertificate], let leaf = certificates.first else { reject("TLS_LEAF_MISSING"); return }
         let der = SecCertificateCopyData(leaf) as Data

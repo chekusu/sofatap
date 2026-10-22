@@ -133,6 +133,7 @@ info = {
     "LSMinimumSystemVersion": "15.0",
     "LSUIElement": False,
     "NSHighResolutionCapable": True,
+    "NSBonjourServices": ["_sofatap-peer._tcp"],
     "NSLocalNetworkUsageDescription": "Sofatap 通过家庭局域网接收你已配对的 iPhone 发来的鼠标和文字操作。",
     "NSHumanReadableCopyright": "Copyright © CHEKUSU INC. Sofatap is available under the MIT license.",
 }

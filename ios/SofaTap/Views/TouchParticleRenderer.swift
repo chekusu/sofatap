@@ -42,6 +42,7 @@ final class TouchParticleRenderer: NSObject {
     private var displayLink: CADisplayLink?
     private let frameTarget = FrameTarget()
     private var preferredFPS: Float = 0
+    private var interactionFPS: Float = 60
     private var renderingActive = false
     private var hasContact = false
     private var dragging = false
@@ -337,12 +338,17 @@ final class TouchParticleRenderer: NSObject {
         updateFrameRate()
     }
 
+    func setInteractionFrameRate(_ maximum: Int) {
+        interactionFPS = Float(min(120, max(60, maximum)))
+        updateFrameRate()
+    }
+
     private func updateFrameRate() {
         let interaction = hasContact || contactStrength > 0.015 || ripples.contains(where: { $0.active })
-        let fps: Float = interaction ? 60 : 30
+        let fps: Float = hasContact ? interactionFPS : (interaction ? 60 : 30)
         guard preferredFPS != fps else { return }
         preferredFPS = fps
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: fps == 60 ? 30 : 15, maximum: fps, preferred: fps)
+        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: fps >= 60 ? 60 : 15, maximum: fps, preferred: fps)
     }
 
     private func stopFrames() {
@@ -353,6 +359,13 @@ final class TouchParticleRenderer: NSObject {
     }
 
     private func step(at time: Double) {
+#if DEBUG
+        let renderStart = ProcessInfo.processInfo.systemUptime
+        // CADisplayLink is installed only on RunLoop.main.
+        defer { if hasContact { MainActor.assumeIsolated {
+            PointerTiming.shared.sample("particleCPU", seconds: ProcessInfo.processInfo.systemUptime - renderStart)
+        } } }
+#endif
         guard renderingActive, !reducedMotion else { stopFrames(); return }
         let delta = min(0.1, max(0, time - (lastFrameTime ?? time)))
         lastFrameTime = time
