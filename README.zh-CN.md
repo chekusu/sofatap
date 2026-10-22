@@ -15,7 +15,7 @@ Sofatap 是 [chekusu](https://github.com/chekusu) 开发的开源遥控工具。
 
 **接收器自启更新：**电脑端 0.7.3 beta.1 与 Android/Google TV 0.1.2 beta.1 新增原生自启选项，首次正常打开时默认开启。电脑端在登录后启动，关闭窗口继续接收，明确选择退出才停止；电视端仍受 Android 和厂商系统限制。参见[行为和验证范围](docs/verification/receiver-autostart-2026-10-16.md)。
 
-**接收器更新功能：**[电脑接收器 0.8.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/v0.8.1-beta.1) 已提供 Windows、Mac 和 Linux 下载。Windows、Linux 加入原生检查更新与自动下载。Mac 的 Apple Silicon 和 Intel 安装包均已签名、公证，并提供已验证的签名更新源。旧接收器需先手动安装一次，后续检查与下载通过原生更新器完成。[Android/Google TV 0.2.0 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.0-beta.1) 仍是当前实验性电视接收器，安装需在电视确认。旧接收器需要先手动升级一次，才能获得更新入口。参见[更新行为与限制](docs/RECEIVER-UPDATES.md)。
+**接收器更新功能：**[电脑接收器 0.8.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/v0.8.1-beta.1) 已提供 Windows、Mac 和 Linux 下载。Windows、Linux 加入原生检查更新与自动下载。Mac 的 Apple Silicon 和 Intel 安装包均已签名、公证，并提供已验证的签名更新源。旧接收器需先手动安装一次，后续检查与下载通过原生更新器完成。[Android/Google TV 0.2.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.1-beta.1) 仍是当前实验性电视接收器，安装需在电视确认。旧接收器需要先手动升级一次，才能获得更新入口。参见[更新行为与限制](docs/RECEIVER-UPDATES.md)。
 
 **开发中的电脑控制（尚未发布）：**电脑遥控新增默认输出设备的音量减、音量加和静音切换，以及可保存的 0.25–3× 指针速度。音量控制需要新版接收器与可调节的系统音频输出；电视控制保持原样。见[行为与验证范围](docs/verification/desktop-controls-2026-10-18.md)。
 
@@ -36,7 +36,7 @@ Sofatap 是 [chekusu](https://github.com/chekusu) 开发的开源遥控工具。
 
 TestFlight 构建 15 已包含设备管理，并对齐官网的 12 种语言：英语、简体中文、日语、韩语、德语、法语、西班牙语、巴西葡萄牙语、俄语、阿拉伯语、印地语、印尼语。阿拉伯语采用从右到左排版，滚动条仍位于触控区物理右侧。见[语言覆盖](docs/APP-LANGUAGES.md)与[验证记录](docs/verification/device-library-2026-10-14.md)。
 
-**当前公开测试版：**iPhone **1.0 (22)** 已通过 TestFlight 外部审核，可通过[公开邀请](https://testflight.apple.com/join/e6MuKx9S)安装，测试人数上限为 10,000 人。Windows、Mac、Linux 使用[电脑接收器 0.8.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/v0.8.1-beta.1)，实验性的电视适配器使用 [Android/Google TV 接收器 0.2.0 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.0-beta.1)。**电视自动重连需要手机构建 17 及以上和电视接收器 0.1.1 beta.1 配合；原生电视控制需要手机构建 20 或更高版本。**参见[构建 18 历史分发记录](docs/verification/testflight-1.0-18.md)和[电视软件验证](docs/verification/android-tv-reconnect-2026-10-16.md)。索尼 XRJ-85X95L 与小米 MiTV-MOEU0 已完成部分安装与设置检查；原生遥控服务配对和第三方应用输入仍待验收。参见[限定实测结果](docs/verification/tv-native-controls-2026-10-17.md)。正式 App Store 构建 15 的提交是独立流程。
+**当前公开测试版：**iPhone **1.0 (22)** 已通过 TestFlight 外部审核，可通过[公开邀请](https://testflight.apple.com/join/e6MuKx9S)安装，测试人数上限为 10,000 人。Windows、Mac、Linux 使用[电脑接收器 0.8.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/v0.8.1-beta.1)，实验性的电视适配器使用 [Android/Google TV 接收器 0.2.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.1-beta.1)。**电视自动重连需要手机构建 17 及以上和电视接收器 0.1.1 beta.1 配合；原生电视控制需要手机构建 20 或更高版本。**参见[构建 18 历史分发记录](docs/verification/testflight-1.0-18.md)和[电视软件验证](docs/verification/android-tv-reconnect-2026-10-16.md)。索尼 XRJ-85X95L 与小米 MiTV-MOEU0 已完成部分安装与设置检查；原生遥控服务配对和第三方应用输入仍待验收。参见[限定实测结果](docs/verification/tv-native-controls-2026-10-17.md)。正式 App Store 构建 15 的提交是独立流程。
 
 **手机构建 22 更新：**iPhone **1.0 (22)** 改善指针发送节奏，修复接收端明确返回忙碌后普通移动无法恢复的问题，并在可用时自动使用 Mac 点对点连接，保留经过身份校验的 Wi-Fi 回退。构建 22 已通过外部审核，内部测试与公开测试现已提供同一版本，可通过上述公开邀请安装。Mac 点对点连接需配合接收器 **0.8.1 beta.1**。参见[实现与验证范围](docs/verification/pointer-transport.md)。
 
@@ -56,7 +56,7 @@ TestFlight 构建 15 已包含设备管理，并对齐官网的 12 种语言：�
 
 **电视开发预览：**源码现已加入 LG webOS 的原生 IP 配对，以及移动、单击、滚动、返回和主页适配器。已通过本地协议与 TLS 测试，尚无通过真机验收的电视型号；自动发现、电视打字与听写仍待实现。参见[详细技术方案](docs/research/tv-implementation-plan.zh-CN.md)和[验证范围](docs/verification/webos-pointer-preview.md)。
 
-**Android/Google TV 测试版：**[接收器 0.2.0 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.0-beta.1) 提供开发签名 APK。配合 iPhone 构建 17 或更高版本，App 在前台时会自动重连当前保存的电视；重启接收器和无关网卡变化会保留有效配对。原生接收器提供无障碍叠加光标，以及依赖目标控件的点击与滚动。独立的原生方向键、确认、返回和主页操作需要使用电视验证码与 Android TV Remote Service 配对。可选的打字和听写需要用户启用并选中 Sofatap 输入法，且目标应用提供普通 Android 输入框；拖动和右键仍未支持。**索尼 XRJ-85X95L 与小米 MiTV-MOEU0 已完成部分安装与设置检查。小米的同签名更新保留了配对和无障碍授权，并已确认启用、选中 Sofatap 输入法。两台电视的原生遥控配对，以及 YouTube、Netflix 和浏览器的实际输入仍待验收。**参见[安装指南](android/README.md)、[限定实测结果](docs/verification/tv-native-controls-2026-10-17.md)与[待完成的硬件验收](docs/ACCEPTANCE.md)。
+**Android/Google TV 测试版：**[接收器 0.2.1 beta.1](https://github.com/chekusu/sofatap/releases/tag/android-tv-v0.2.1-beta.1) 提供开发签名 APK。配合 iPhone 构建 17 或更高版本，App 在前台时会自动重连当前保存的电视；重启接收器和无关网卡变化会保留有效配对。原生接收器提供无障碍叠加光标，以及依赖目标控件的点击与滚动。独立的原生方向键、确认、返回和主页操作需要使用电视验证码与 Android TV Remote Service 配对。可选的打字和听写需要用户启用并选中 Sofatap 输入法，且目标应用提供普通 Android 输入框；拖动和右键仍未支持。**索尼 XRJ-85X95L 与小米 MiTV-MOEU0 已完成部分安装与设置检查。小米的同签名更新保留了配对和无障碍授权，并已确认启用、选中 Sofatap 输入法。两台电视的原生遥控配对，以及 YouTube、Netflix 和浏览器的实际输入仍待验收。**参见[安装指南](android/README.md)、[限定实测结果](docs/verification/tv-native-controls-2026-10-17.md)与[待完成的硬件验收](docs/ACCEPTANCE.md)。
 
 兼容接收端识别到提供辅助功能元数据的新可编辑输入框时，手机会自动弹出键盘。后台检测不读取框内内容；随后打开实时编辑会话时，会把受支持字段的完整文字和选区传到配对手机，因此退格、全选后删除也能修改电脑上的已有文字。焦点检测与实时编辑的支持范围不同：Windows 实时编辑当前限原生 Edit/RichEdit 控件；Mac 要求辅助功能提供可写的选中文字及选区。缺少相应能力的浏览器、自绘控件、Linux 及旧接收端采用检查草稿后发送。密码和只读字段不能开启实时编辑。参见[焦点检测、数据处理及平台限制](docs/TEXT-FOCUS.md)。
 
