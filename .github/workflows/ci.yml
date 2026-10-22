@@ -278,6 +278,34 @@ jobs:
           path: artifacts/mint-calm/linux-*.png
           if-no-files-found: error
 
+  android-controller:
+    name: Android phone · controller, protocol and APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Select JDK 17 and verify the runner Android SDK
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME_17_X64/bin/java" -version
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt2"
+      - name: Compile phone APK and device tests; run JVM checks and lint
+        working-directory: android
+        run: ./gradlew --no-daemon --max-workers=2 :controller:assembleDebug :controller:assembleDebugAndroidTest :controller:assembleRelease :controller:testDebugUnitTest :controller:lintDebug
+      - name: Validate release packaging safeguards
+        run: python3 -m unittest discover -s scripts/tests -p test_package_android_controller.py
+      - name: Save development APK and software reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-phone-controller-development
+          path: |
+            android/controller/build/outputs/apk/debug/controller-debug.apk
+            android/controller/build/reports/tests/testDebugUnitTest/
+            android/controller/build/reports/lint-results-debug.html
+          if-no-files-found: error
+
   android-tv:
     name: Android TV · native receiver, protocol and APK
     runs-on: ubuntu-24.04

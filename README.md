@@ -68,10 +68,17 @@ In build 16, keyboard Backspace edits an unsent fallback draft locally. After cl
 
 Build 18 adds a gear button on the touchpad. Choose Sofatap, Trackpad habits or Press for shortcuts, then assign actions to taps, left/right double-taps, two/three-finger taps, holds and slides. Computer and TV preferences are saved separately on the iPhone. Adjust timing and scroll direction, restore a preset, or try gestures in the offline practice pad. TV choices are limited to the receiver’s capabilities. See [gesture settings](docs/GESTURES.md) for details and validation limits. Available in public TestFlight 1.0 (18). Physical settings and local-practice checks passed on the dedicated iPhone and iPad; receiver effects remain separately qualified.
 
+## Android phone beta
+
+The native **Android phone/tablet controller 0.1.0-beta.1** in [`android/controller`](android/controller/README.md) is separate from the TV receiver. It requires Android 8.0+ and includes English, Simplified Chinese and Japanese. It supports pairing and saved devices, separate computer/TV gesture profiles with three presets and local practice, and desktop live text/selection/deletion where the receiver and focused field support it. Other computer fields and TV text use explicit Send. Foreground dictation requests partial results from the installed speech provider; their availability and audio handling depend on that provider.
+
+Direct-APK beta: [release notes](https://github.com/chekusu/sofatap/releases/tag/android-controller-v0.1.0-beta.1) · [Sofatap-Android-0.1.0-beta.1.apk](https://github.com/chekusu/sofatap/releases/download/android-controller-v0.1.0-beta.1/Sofatap-Android-0.1.0-beta.1.apk). This is not a Google Play release and has no self-updater. The public package is `com.chekusu.sofatap`; development builds use `com.chekusu.sofatap.dev`. Physical-device acceptance is recorded separately and must not be inferred from source or emulator checks. See [setup, input limits and verification](android/controller/README.md).
+
 ## Platform status
 
 | Platform | Current status |
 | --- | --- |
+| Android phone / tablet | **0.1.0-beta.1 pre-release**, Android 8.0+. Custom profiles, supported desktop live editing, explicit TV text sending and provider-dependent dictation. Direct APK distribution; no Google Play or self-updater. [Setup and acceptance limits](android/controller/README.md). |
 | iPhone | iOS 17+. Public version 1.0 (22) supports 12 interface languages and is available in [public TestFlight](https://testflight.apple.com/join/e6MuKx9S). TestFlight installation of build 16 on the dedicated test iPhone is verified; final-build Windows restart and input acceptance remain pending. Earlier camera pairing and input checks retain their actual tested versions in the [0.7.1 record](docs/verification/receiver-0.7.1.md) and [build 16 development record](docs/verification/input-1.0-16.md). |
 | Windows | Receiver 0.8.1 beta.1 is available with native Edit/RichEdit live editing. Earlier scoped physical RichEdit keyboard checks passed; further device cases and current restart acceptance remain pending. Windows binaries are not Authenticode-signed. |
 | Mac | macOS 15+. Receiver 0.8.1 beta.1 Apple Silicon and Intel packages are signed and notarized, with signed Sparkle update feeds. Earlier scoped Apple Silicon input checks passed; current live editing and Intel input still need physical acceptance. |
@@ -106,7 +113,9 @@ Pairing links contain control credentials: keep them on your own devices. If upg
 
 Sofatap connects directly over the local network. The project has no hosted relay service. Pairing uses a pinned TLS certificate; credentials are stored in iPhone Keychain, Windows DPAPI, or current-user-only receiver files on Mac/Linux. Mac input requires Accessibility permission; Wayland input requires the desktop's explicit portal grant.
 
-The microphone starts only after an explicit tap and the required permissions. Supported on-device recognition keeps audio on the phone; Sofatap does not upload audio or silently switch to cloud recognition. In a live editing session, partial recognized text and later corrections synchronize to the computer. In the fallback composer, text stays local until **Send**. System dictation and third-party keyboards have their own data handling.
+In the iPhone app, the microphone starts only after an explicit tap or configured dictation gesture and the required permissions. Supported on-device recognition keeps audio on the phone; the iPhone app does not upload audio or silently switch to cloud recognition. In a live editing session, partial recognized text and later corrections synchronize to the computer. In the fallback composer, text stays local until **Send**. System dictation and third-party keyboards have their own data handling.
+
+Android dictation uses the installed speech provider after an explicit microphone tap or configured gesture and microphone permission. That provider may process audio online; on-device recognition is not guaranteed. Sofatap requests partial results and stops its recording session when leaving the foreground. See [Android dictation and privacy](android/controller/README.md#dictation).
 
 Live editing sends the current supported field’s complete text and selection directly to the paired phone over pinned TLS. The phone keeps imported live text in memory without automatically saving it as a draft. After switching devices, explicitly allowing the retained text to be sent again promotes it to a locally saved review-and-send draft; switching alone never sends it. The receiver keeps bounded text-bearing acknowledgements in connection memory for duplicate suppression until the connection ends. The separate review-and-send draft remains stored locally for recovery. Field text is not logged or sent to a hosted service; background focus hints contain only metadata.
 
@@ -169,6 +178,8 @@ Build, protocol, virtual-desktop and physical-device checks establish different 
 | Path | Contents |
 | --- | --- |
 | `ios/` | Native iPhone app, Xcode project and project-generation configuration |
+| `android/controller/` | Native Android phone/tablet controller beta |
+| `android/receiver/` | Experimental Android/Google TV receiver |
 | `host/` | Shared receiver protocol, Windows/Mac input backends and Linux worker bridge |
 | `desktop/` | Native pairing windows and Linux input workers |
 | `tests/` | Protocol, authentication and input-boundary checks |

@@ -31,7 +31,7 @@ internal static class SelfTests
         PrivateFiles.PrepareDirectory(path);
         try
         {
-            using (var record = new RecordingInput(path))
+            using (var record = new RecordingInput(path, liveTextEnabled: true))
             {
                 Check(record.Available, "recording input enables phone controls");
                 record.Apply(new("1", "move", Dx: 1000, Dy: -1000));
@@ -61,6 +61,24 @@ internal static class SelfTests
                 var before = Events(path);
                 try { record.Apply(new("10", "text", Text: "sofatap://pair?token=private")); throw new InvalidOperationException(); }
                 catch (InputInjectionException) { Check(Events(path) == before, "pairing material rejected before event log"); }
+                PrivateFiles.WriteJson(Path.Combine(path, "control.json"), new { focus = "text", revision = 11 });
+                using (var live = new LiveTextSession(new HarnessLiveTextEditor(record), () => record.Available))
+                {
+                    var start = live.Begin();
+                    Check(start.Text == "" && start.Revision == 0, "live session reads only the synthetic field");
+                    var next = live.Sync(start.Session, 1, "A😀中文", 1, 2);
+                    Check(next.Text == "A😀中文" && next.SelectionStart == 1 && next.SelectionLength == 2,
+                        "live full-field replacement retains UTF-16 emoji selection");
+                    try { live.Sync(start.Session, 1, "duplicate", 9, 0); throw new InvalidOperationException(); }
+                    catch (InputInjectionException) { Check(record.ReadLive().Text == "A😀中文", "stale live revision never appends or replaces text"); }
+                    var fresh = live.Begin();
+                    before = Events(path);
+                    try { live.Sync(fresh.Session, 1, "sofatap://pair?token=private", 0, 0); throw new InvalidOperationException(); }
+                    catch (InputInjectionException) { Check(Events(path) == before, "live edits exclude pairing material before logging"); }
+                    PrivateFiles.WriteJson(Path.Combine(path, "control.json"), new { focus = "protected", revision = 12 });
+                    try { live.Begin(); throw new InvalidOperationException(); }
+                    catch (InputInjectionException) { Check(true, "live read rejects protected synthetic fields"); }
+                }
                 using (var lines = new StringReader(Events(path)))
                     while (lines.ReadLine() is { } line) using (JsonDocument.Parse(line)) { }
                 Check(true, "every event is a complete JSON line");
