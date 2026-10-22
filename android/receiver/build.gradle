@@ -8,8 +8,8 @@ android {
         applicationId 'com.chekusu.sofatap.tv'
         minSdk 26
         targetSdk 36
-        versionCode 6
-        versionName '0.2.0-beta.1'
+        versionCode 7
+        versionName '0.2.1-beta.1'
         buildConfigField 'boolean', 'SELF_UPDATE_ENABLED', selfUpdateEnabled.toString()
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
