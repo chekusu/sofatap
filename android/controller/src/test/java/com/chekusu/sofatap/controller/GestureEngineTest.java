@@ -311,5 +311,38 @@ public class GestureEngineTest {
         engine.setConfiguration(new GestureConfiguration(GestureConfiguration.Target.computer).withAction(GestureConfiguration.Gesture.singleTap,GestureConfiguration.Action.toggleDictation));
         engine.accessibilityClick();engine.tick(1000);assertEquals(List.of("shortcut:toggleDictation"),listener.actions);
     }
+    @Test public void settledFingerRollInsideSlopStillStartsDrag() {
+        down(1,100,100,0);
+        move(1,105,100,50);
+        engine.tick(300);
+        assertTrue(engine.isDragging());
+        engine.up(1,105,100,400);engine.tick(900);
+        assertEquals(List.of("move","drag:true","drag:false"),listener.actions);
+        assertArrayEquals(new double[]{5,0},listener.moves.get(0),.001);
+    }
+    @Test public void slowSlideInsideSlopOnlyMovesThePointer() {
+        down(1,100,100,0);
+        for(int step=1;step<=6;step++)move(1,100+1.1*step,100,50L*step);
+        engine.tick(500);engine.up(1,106.6,100,600);engine.tick(1000);
+        assertFalse(listener.actions.contains("drag:true"));
+        assertFalse(listener.actions.contains("left:1"));
+        assertTrue(listener.actions.contains("move"));
+    }
+    @Test public void movementAfterTheHoldDeadlineCancelsALateDrag() {
+        down(1,100,100,0);
+        move(1,104,100,50);
+        move(1,106,100,350);
+        engine.tick(360);engine.tick(1000);
+        assertFalse(engine.isDragging());
+        assertEquals(List.of("move","move"),listener.actions);
+    }
+    @Test public void settledRollOnSecondTouchKeepsTapThenHoldDrag() {
+        engine.setConfiguration(new GestureConfiguration(GestureConfiguration.Preset.pressMenu,GestureConfiguration.Target.computer));
+        tap(1,50,0);down(2,52,80,150);
+        move(2,56,80,190);
+        engine.tick(460);
+        engine.up(2,56,80,500);engine.tick(1000);
+        assertEquals(List.of("move","drag:true","drag:false"),listener.actions);
+    }
 
 }

@@ -138,6 +138,36 @@ struct TouchGestureTests {
         check("stationary jitter still permits 300ms hold", jitter.advance(to: 0.3) == [.dragging(true)])
         _ = jitter.cancel()
 
+        var roll = State()
+        _ = begin(&roll)
+        check("early finger roll moves the pointer", roll.move(to: .init(x: 105, y: 100), count: 1, time: 0.05) == [.move(5, 0)])
+        check("finger roll inside the stationary tolerance keeps the hold armed", roll.nextDeadline == 0.3)
+        check("settled finger roll still begins a drag at 300ms", roll.advance(to: 0.3) == [.dragging(true)])
+        check("settled finger roll releases without a click", roll.end(at: .init(x: 105, y: 100), remainingCount: 0, time: 0.4) == [.dragging(false)])
+        var slowSlide = State()
+        _ = begin(&slowSlide)
+        var slowActions: [Action] = []
+        for step in 1...6 {
+            slowActions += slowSlide.move(to: .init(x: 100 + 1.1 * Double(step), y: 100), count: 1, time: 0.05 * Double(step))
+        }
+        slowActions += slowSlide.advance(to: 0.5)
+        check("slow slide inside the stationary tolerance only moves the pointer",
+              slowActions.count == 4 && !slowActions.contains(.dragging(true)) && !slowSlide.isDragging)
+        check("slow slide lift never clicks", slowSlide.end(at: .init(x: 106.6, y: 100), remainingCount: 0, time: 0.6).isEmpty)
+        var lateTimer = State()
+        _ = begin(&lateTimer)
+        _ = lateTimer.move(to: .init(x: 104, y: 100), count: 1, time: 0.05)
+        check("movement after the deadline cancels a late hold",
+              lateTimer.move(to: .init(x: 106, y: 100), count: 1, time: 0.35) == [.move(2, 0)] && !lateTimer.isDragging)
+        check("late hold stays cancelled once the finger rests", lateTimer.advance(to: 1).isEmpty && lateTimer.nextDeadline == nil)
+        _ = lateTimer.cancel()
+        var rollPastTolerance = State()
+        _ = begin(&rollPastTolerance)
+        _ = rollPastTolerance.move(to: .init(x: 108, y: 100), count: 1, time: 0.05)
+        check("leaving the stationary tolerance still cancels the hold",
+              rollPastTolerance.nextDeadline == nil && rollPastTolerance.advance(to: 0.5).isEmpty)
+        _ = rollPastTolerance.cancel()
+
         var scroll = State()
         _ = begin(&scroll)
         check("second finger cancels hold", scroll.begin(at: origin, count: 2, time: 0.1).isEmpty && scroll.nextDeadline == nil)
@@ -161,6 +191,12 @@ struct TouchGestureTests {
         check("holding second touch starts drag without phantom left click", secondHold.advance(to: 0.43) == [.dragging(true)])
         check("holding second touch does not right click", end(&secondHold, 0.5) == [.dragging(false)])
         check("holding second touch leaves no delayed action", secondHold.advance(to: 3).isEmpty)
+        var secondRoll = State()
+        _ = begin(&secondRoll); _ = end(&secondRoll, 0.03); _ = begin(&secondRoll, 0.12)
+        _ = secondRoll.move(to: .init(x: 104, y: 102), count: 1, time: 0.16)
+        check("settled roll on the second touch still starts its drag", secondRoll.advance(to: 0.43) == [.dragging(true)])
+        check("second-touch roll releases without a click", end(&secondRoll, 0.5) == [.dragging(false)])
+        check("second-touch roll leaves no delayed action", secondRoll.advance(to: 3).isEmpty)
         var rightSecondHold = State()
         _ = rightSecondHold.begin(at: origin, count: 1, time: 0, region: .right)
         _ = rightSecondHold.end(at: origin, remainingCount: 0, time: 0.03, region: .right)

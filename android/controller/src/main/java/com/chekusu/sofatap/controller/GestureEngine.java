@@ -17,8 +17,8 @@ public final class GestureEngine {
     }
     public static final long LONG_PRESS_MS=300,DOUBLE_TAP_MS=280,TV_REPEAT_MS=150;
     public static final double EDGE_WIDTH=26;
-    private static final double SLOP=7,DOUBLE_TAP_DISTANCE=32,TV_STEP=32;
-    private static final long MOTION_INTERVAL_MS=16,MULTI_TAP_MS=250;
+    private static final double SLOP=7,DOUBLE_TAP_DISTANCE=32,TV_STEP=32,SETTLE=1;
+    private static final long MOTION_INTERVAL_MS=16,MULTI_TAP_MS=250,SETTLE_MS=100;
     private static final class Contact {
         final double startX,startY;double x,y;
         Contact(double x,double y){startX=this.x=x;startY=this.y=y;}
@@ -26,10 +26,10 @@ public final class GestureEngine {
     private final Listener listener;
     private final Map<Integer,Contact> contacts=new LinkedHashMap<>();
     private GestureConfiguration configuration=new GestureConfiguration(Target.computer);
-    private boolean tvMode,tvPointerMode,edge,moved,dragging,suppressed,secondTap,multiMoved,multiEligible,lifted,holdFired,tapRight,tapRegionValid;
+    private boolean tvMode,tvPointerMode,edge,moved,dragging,suppressed,secondTap,multiMoved,multiEligible,lifted,holdFired,holdCancelled,tapRight,tapRegionValid;
     private int peakContacts;
-    private double width,startX,startY,previousX,previousY,tvAnchorX,tvAnchorY;
-    private long startedAt,lastNavigationAt=Long.MIN_VALUE,lastMotionAt;
+    private double width,startX,startY,previousX,previousY,tvAnchorX,tvAnchorY,settleX,settleY;
+    private long startedAt,lastNavigationAt=Long.MIN_VALUE,lastMotionAt,settledAt;
     private double queuedMoveX,queuedMoveY,queuedScrollX,queuedScrollY;
     private boolean pendingTap,pendingRightHalf;
     private double pendingX,pendingY;
@@ -43,6 +43,7 @@ public final class GestureEngine {
     private boolean directionalTv(){return tvMode&&!tvPointerMode;}
     public boolean isDragging(){return dragging;}
     public boolean isEdgeScrolling(){return !contacts.isEmpty()&&edge&&moved&&!suppressed;}
+    /** Desktop pointer motion starts early; only leaving SLOP rules out a hold, as a pressing finger often rolls. */
     private double movementTolerance(){return !tvMode&&configuration.action(Gesture.oneFingerMove)==Action.movePointer?3:SLOP;}
 
     public void down(int pointerId,double x,double y,double surfaceWidth,long now) {
@@ -52,10 +53,10 @@ public final class GestureEngine {
             secondTap=!directionalTv()&&pendingTap&&now-pendingAt<configuration.doubleTapIntervalMs
                 &&Math.hypot(x-pendingX,y-pendingY)<=DOUBLE_TAP_DISTANCE&&tapRight==pendingRightHalf&&defersSingle(tapRight);
             if(secondTap)pendingTap=false;else flushTap();
-            startX=previousX=tvAnchorX=x;startY=previousY=tvAnchorY=y;
-            startedAt=lastMotionAt=now;lastNavigationAt=Long.MIN_VALUE;
+            startX=previousX=tvAnchorX=settleX=x;startY=previousY=tvAnchorY=settleY=y;
+            startedAt=lastMotionAt=settledAt=now;lastNavigationAt=Long.MIN_VALUE;
             edge=!tvMode&&x>=width-EDGE_WIDTH;
-            moved=suppressed=multiMoved=lifted=holdFired=false;multiEligible=true;peakContacts=1;
+            moved=suppressed=multiMoved=lifted=holdFired=holdCancelled=false;multiEligible=true;peakContacts=1;
         } else {
             flushMotion();pendingTap=false;secondTap=false;
             multiEligible&=!moved&&!holdFired&&!dragging&&!lifted&&now-startedAt<=MULTI_TAP_MS;
@@ -84,8 +85,12 @@ public final class GestureEngine {
         }
         if((x>=width/2)!=tapRight)tapRegionValid=false;
         double distance=Math.hypot(x-startX,y-startY);
+        if(distance>SLOP)holdCancelled=true;
+        if(Math.hypot(x-settleX,y-settleY)>SETTLE){settleX=x;settleY=y;settledAt=now;}
         if(!moved&&!dragging&&distance<=(edge?3:movementTolerance())){tick(now);return;}
-        moved=true;flushTap();secondTap=false;
+        moved=true;flushTap();
+        // A tap-then-hold candidate survives early pointer motion until the hold is ruled out.
+        if(holdCancelled)secondTap=false;
         if(directionalTv()) {
             double dx=x-tvAnchorX,dy=y-tvAnchorY;
             if(Math.max(Math.abs(dx),Math.abs(dy))>=TV_STEP&&(lastNavigationAt==Long.MIN_VALUE||now-lastNavigationAt>=TV_REPEAT_MS)) {
@@ -126,15 +131,20 @@ public final class GestureEngine {
     }
     public void tick(long now) {
         if(pendingTap&&now-pendingAt>=configuration.doubleTapIntervalMs)flushTap();
-        if(!directionalTv()&&contacts.size()==1&&peakContacts==1&&!edge&&!suppressed&&!lifted&&!moved&&!holdFired&&now-startedAt>=configuration.holdDurationMs) {
-            pendingTap=false;holdFired=true;
-            Action action=configuration.action(secondTap?Gesture.doubleTapHold:Gesture.longPress);secondTap=false;
-            if(action==Action.drag){dragging=true;listener.drag(true);}else discrete(action);
+        if(!directionalTv()&&contacts.size()==1&&peakContacts==1&&!edge&&!suppressed&&!lifted&&!holdCancelled&&!holdFired&&now-startedAt>=configuration.holdDurationMs) {
+            // A finger still sliding at the deadline is moving the pointer. Judge rest at the
+            // deadline itself so a late tick cannot start a drag.
+            if(moved&&startedAt+configuration.holdDurationMs-settledAt<SETTLE_MS){holdCancelled=true;secondTap=false;}
+            else {
+                pendingTap=false;holdFired=true;
+                Action action=configuration.action(secondTap?Gesture.doubleTapHold:Gesture.longPress);secondTap=false;
+                if(action==Action.drag){flushMotion();dragging=true;listener.drag(true);}else discrete(action);
+            }
         }
         flushIfDue(now);
     }
     /** Configuration, target, interruption and dismissal drop deferred actions and release drag. */
-    public void cancel(){contacts.clear();queuedMoveX=queuedMoveY=queuedScrollX=queuedScrollY=0;pendingTap=secondTap=false;suppressed=moved=multiMoved=edge=lifted=holdFired=false;peakContacts=0;lastNavigationAt=Long.MIN_VALUE;releaseDrag();}
+    public void cancel(){contacts.clear();queuedMoveX=queuedMoveY=queuedScrollX=queuedScrollY=0;pendingTap=secondTap=false;suppressed=moved=multiMoved=edge=lifted=holdFired=holdCancelled=false;peakContacts=0;lastNavigationAt=Long.MIN_VALUE;releaseDrag();}
     private boolean defersSingle(boolean right){return configuration.action(right?Gesture.rightDoubleTap:Gesture.leftDoubleTap)!=Action.none||configuration.action(Gesture.doubleTapHold)!=Action.none;}
     private void discrete(Action action) {
         switch(action) {

@@ -20,6 +20,7 @@ Tap gestures include single tap, left-half double tap, right-half double tap, tw
 
 - Discrete gestures can trigger a supported click, double-click, Enter/confirmation, Escape/Back, keyboard toggle or dictation toggle. Home is TV-only. An action can also be unassigned.
 - Only hold gestures can hold the mouse button for a drag. Lifting or cancelling releases it; there is no persistent drag lock.
+- On computers, one-finger pointer movement starts after 3 points, before a hold is ruled out. A hold is cancelled only when the finger leaves the 7-point stationary tolerance or is still sliding when the hold duration ends. A finger that rolls a few points while pressing and then rests for 100 ms keeps the hold.
 - Slides can move the pointer, scroll or do nothing. Natural scrolling applies to these slides. The strip inside the touchpad's right edge retains scrollbar direction.
 - Unassigning a double-tap action removes that separate gesture: individual taps still perform the single-tap action. Single taps wait only when a double tap or tap-then-hold needs to be distinguished.
 - Hold duration is adjustable from 200–1200 ms; the double-tap interval from 150–500 ms. A longer double-tap interval can increase single-tap latency.

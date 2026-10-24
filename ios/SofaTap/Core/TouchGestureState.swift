@@ -19,15 +19,21 @@ struct TouchGestureState {
     static let holdDuration = 0.300
     static let doubleTapInterval = 0.280
     static let stationaryMovementTolerance = 7.0
+    /// Desktop pointer motion starts early. A hold is still ruled out only beyond the
+    /// stationary tolerance, because a pressing finger often rolls a few points.
     private var movementTolerance: Double {
         profile == .desktop && mode == .one && configuration.action(for: .oneFingerMove) == .movePointer
             ? 3 : Self.stationaryMovementTolerance
     }
+    /// After early pointer motion, a hold also needs the finger to have come to rest.
+    private let settleTolerance = 1.0
+    private let settleDuration = 0.1
     private let doubleTapDistance = 32.0
     private let multiTapDuration = 0.250
     private var mode = Mode.idle
     private var origin = Point(x: 0, y: 0)
     private var previous = Point(x: 0, y: 0)
+    private var settle = (point: Point(x: 0, y: 0), time: 0.0)
     private var contactStart = 0.0
     private var contactCount = 0
     private var peakContactCount = 0
@@ -98,6 +104,7 @@ struct TouchGestureState {
         contactStart = time
         origin = point
         previous = point
+        settle = (point, time)
         moved = false
         tapRegion = region
         holdDeadline = time + configuration.holdDuration
@@ -116,11 +123,7 @@ struct TouchGestureState {
         if count != contactCount { return switchContactCount(count, point: point, time: time) }
         let dx = point.x - previous.x, dy = point.y - previous.y
         previous = point
-        if origin.distance(to: point) > movementTolerance {
-            moved = true
-            multiTapEligible = false
-            holdDeadline = nil
-        }
+        track(point, time: time)
         if mode == .multi {
             guard moved, contactCount == 2 else { return [] }
             return motion(configuration.action(for: .twoFingerMove), dx: dx, dy: dy)
@@ -162,7 +165,7 @@ struct TouchGestureState {
         var actions: [Action] = []
         if mode == .one {
             if tapRegion != region { tapRegion = nil }
-            if origin.distance(to: point) > movementTolerance { moved = true; holdDeadline = nil }
+            track(point, time: time)
             actions += advance(to: time)
             if isDragging {
                 actions.append(.dragging(false))
@@ -205,8 +208,11 @@ struct TouchGestureState {
             self.pendingTap = nil
             actions += discrete(configuration.action(for: .singleTap))
         }
-        if let holdDeadline, time >= holdDeadline, mode == .one, !moved, !suppressLiftClick {
+        if let holdDeadline, time >= holdDeadline, mode == .one, !suppressLiftClick {
             self.holdDeadline = nil
+            // A finger still sliding at the deadline is moving the pointer, not holding.
+            // Judge rest at the deadline itself so a late timer cannot start a drag.
+            if moved && holdDeadline - settle.time < settleDuration { return actions }
             pendingTap = nil
             let action = configuration.action(for: secondTap ? .doubleTapHold : .longPress)
             secondTap = false
@@ -236,6 +242,18 @@ struct TouchGestureState {
         pendingTap = nil
         resetContact()
         return actions
+    }
+
+    /// Early pointer motion ends tap candidates; only leaving the stationary
+    /// tolerance cancels the hold before its deadline.
+    private mutating func track(_ point: Point, time: Double) {
+        let distance = origin.distance(to: point)
+        if distance > movementTolerance {
+            moved = true
+            multiTapEligible = false
+        }
+        if distance > Self.stationaryMovementTolerance { holdDeadline = nil }
+        if settle.point.distance(to: point) > settleTolerance { settle = (point, time) }
     }
 
     private func doubleGesture(in region: Region) -> GestureID {
