@@ -373,6 +373,7 @@ struct RemoteView: View {
         if televisionSelected { return tv.title }
         if model.demo { return String(localized: "界面演示") }
         if model.connecting { return String(localized: "正在安全连接…") }
+        if model.connected && model.inputAvailable && model.usesBluetoothTransport { return String(localized: "已连接 · 蓝牙 BLE") }
         if model.connected && model.inputAvailable && model.usesPeerTransport { return String(localized: "已连接 · 设备直连") }
         if model.connected { return model.inputAvailable ? String(localized: "已连接 · 普通 Wi-Fi") : model.receiverState.unavailableTitle }
         return String(localized: "未连接")

@@ -42,6 +42,12 @@ import UIKit
     private var previous: [String: Double] = [:]
     private var scheduled = false
     private var outputSequence = 0
+    private var transport = "unknown"
+    private var sessionID = UUID().uuidString
+    func beginSession(transport: String) {
+        self.transport = transport; sessionID = UUID().uuidString
+        histograms.removeAll(); counters.removeAll(); previous.removeAll()
+    }
     private let writer = DispatchQueue(label: "Sofatap pointer timing", qos: .utility)
 
     func resetPulse(_ name: String) { previous.removeValue(forKey: name) }
@@ -63,14 +69,19 @@ import UIKit
             self.scheduled = false
             self.outputSequence += 1
             let snapshot: [String: Any] = ["schema": 1, "sequence": self.outputSequence,
+                "transport": self.transport, "session": self.sessionID,
                 "build": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
                 "lowPowerMode": ProcessInfo.processInfo.isLowPowerModeEnabled,
                 "thermalState": ProcessInfo.processInfo.thermalState.rawValue,
                 "metrics": self.histograms.mapValues(\.summary), "counters": self.counters]
             guard let data = try? JSONSerialization.data(withJSONObject: snapshot, options: [.sortedKeys, .prettyPrinted]),
                   let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-            let url = directory.appendingPathComponent("pointer-timing.json")
-            self.writer.async { try? data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen]) }
+            let url = directory.appendingPathComponent("pointer-timing-\(transport).json")
+            let latest = directory.appendingPathComponent("pointer-timing.json")
+            self.writer.async {
+                try? data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
+                try? data.write(to: latest, options: [.atomic, .completeFileProtectionUnlessOpen])
+            }
         }
     }
 }

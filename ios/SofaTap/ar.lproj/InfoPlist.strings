@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "عند الضغط على الميكروفون، يُتعرف على الكلام على iPhone. في الوضع المباشر يُرسل النص فورًا إلى الكمبيوتر؛ وفي وضع المسودة تراجعه قبل الإرسال.";
 "NSSpeechRecognitionUsageDescription" = "تحويل الكلام المسجل إلى نص بالتعرف على الجهاز. إذا لم يكن جهازك أو لغتك مدعومًا، استخدم لوحة المفاتيح.";
 "NSMotionUsageDescription" = "استخدام حركة iPhone لتحريك المؤشر عندما يكون الإدخال بالحركة نشطًا.";
+
+"NSBluetoothAlwaysUsageDescription" = "يستخدم Sofatap تقنية Bluetooth للتحكم التجريبي بين iPhone وMac المقترنين.";

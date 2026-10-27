@@ -6,6 +6,7 @@ trap 'rm -rf "$STAGE"' EXIT
 xcrun swiftc -parse-as-library -swift-version 5 -D SOFATAP_RECEIVER_TESTING \
   "$ROOT/desktop/macos/ReceiverController.swift" "$ROOT/desktop/macos/ReceiverProtocol.swift" \
   "$ROOT/desktop/macos/ReceiverPipeReader.swift" "$ROOT/desktop/macos/ReceiverStoreEnvironment.swift" \
+  "$ROOT/ios/SofaTap/Core/BluetoothTransport.swift" \
   "$ROOT/desktop/macos/MacPeerRelay.swift" "$ROOT/desktop/macos/tests/ReceiverPeerLifecycleTests.swift" \
   -o "$STAGE/tests"
 python3 - "$STAGE/tests" <<'PYTHON'

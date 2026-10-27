@@ -112,6 +112,33 @@ struct PairingAttemptTests {
         mode.connect()
         check("manual connect uses persisted Wi-Fi preference", modeOpened == 3 && modePrepared.count == 2)
         mode.disconnectDevice()
+        // Explicit BLE must never silently fall back to LAN.
+        var blePrepared: [(UInt16?) -> Void] = []
+        var bleOpened = 0
+        var bleAvailabilityStarts = 0
+        let ble = ControllerModel(testPairingLibrary: stagedLibrary,
+            testPairingWrite: { _ in stagedLibrary }, testPairingConnect: { _ in bleOpened += 1 },
+            testPrepareConnection: { blePrepared.append($0) },
+            testPeerAvailabilityMonitor: { callback in bleAvailabilityStarts += 1; callback(true) })
+        ble.startPeerAvailabilityMonitoring()
+        ble.setConnectionMode(.bluetooth); ble.connect()
+        check("BLE selection stops peer Wi-Fi browsing", !ble.peerConnectionAvailable)
+        ble.startPeerAvailabilityMonitoring()
+        check("BLE never starts an AWDL monitor", bleAvailabilityStarts == 1)
+        check("BLE awaits its own route", ble.connecting && bleOpened == 0 && blePrepared.count == 1)
+        blePrepared[0](nil)
+        check("BLE discovery failure never opens LAN", !ble.connecting && !ble.connected && bleOpened == 0)
+        ble.connect(); blePrepared[1](12351); ble.testConnectionEstablished()
+        check("BLE is separate from peer Wi-Fi", ble.usesBluetoothTransport && !ble.usesPeerTransport && bleOpened == 1)
+        ble.setConnectionMode(.wifi)
+        check("leaving BLE opens LAN", !ble.usesBluetoothTransport && bleOpened == 2)
+        blePrepared[1](12352)
+        check("late BLE callback cannot reopen old route", bleOpened == 2)
+        ble.disconnectDevice()
+        ble.setConnectionMode(.bluetooth); ble.connect()
+        ble.becameInactive(); blePrepared[2](12353)
+        check("background cancels BLE preparation", !ble.connecting && bleOpened == 2)
+
         var availabilityReplies: [(Bool) -> Void] = []
         let availability = ControllerModel(testPairingLibrary: stagedLibrary,
             testPairingWrite: { _ in stagedLibrary }, testPairingConnect: { _ in },

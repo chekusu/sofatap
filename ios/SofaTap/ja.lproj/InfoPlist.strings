@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "マイクをタップすると iPhone 上で音声を認識します。リアルタイムモードでは認識したテキストをすぐにパソコンへ送信し、下書きモードでは確認後に送信します。";
 "NSSpeechRecognitionUsageDescription" = "端末内の音声認識で録音した音声をテキストに変換します。デバイスや言語が未対応の場合はキーボードを使用してください。";
 "NSMotionUsageDescription" = "モーション入力が有効なとき、iPhone の動きでポインタを操作します。";
+
+"NSBluetoothAlwaysUsageDescription" = "Sofatap は Bluetooth を使い、ペアリング済みの iPhone と Mac 間で試験的なリモート操作を行います。";

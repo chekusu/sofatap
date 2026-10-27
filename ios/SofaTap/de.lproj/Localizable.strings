@@ -486,3 +486,9 @@
 "电视上未安装此应用。" = "Diese App ist nicht auf dem Fernseher installiert.";
 "电视未能打开此应用，请在电视上检查。" = "Der Fernseher konnte diese App nicht öffnen. Prüfe den Fernseher.";
 "电视操作等待过久，请重新选择后确认。" = "Die TV-Navigation hat zu lange gedauert. Wähle vor dem Bestätigen erneut einen Eintrag aus.";
+
+/* Experimental Bluetooth transport */
+"蓝牙（实验）" = "Bluetooth (Beta)";
+"已连接 · 蓝牙 BLE" = "Verbunden · Bluetooth BLE";
+"请在 Mac 接收器开启蓝牙实验模式。此模式不会自动回退到 Wi-Fi。" = "Aktiviere den experimentellen Bluetooth-Modus im Mac-Empfänger. Dieser Modus wechselt nicht automatisch zu WLAN.";
+"蓝牙连接失败。请确认两端蓝牙权限、Mac 实验模式开关与距离，再点连接重试。" = "Bluetooth-Verbindung fehlgeschlagen. Prüfe die Berechtigungen beider Geräte, den experimentellen Modus am Mac und die Entfernung. Tippe dann auf Verbinden.";

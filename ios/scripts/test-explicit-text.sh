@@ -14,6 +14,7 @@ xcrun --sdk macosx swiftc -parse-as-library -swift-version 5 \
     "$REPO_ROOT/ios/SofaTap/Core/ControllerModel.swift" \
     "$REPO_ROOT/ios/SofaTap/Core/PeerTransportDiscovery.swift" \
     "$REPO_ROOT/ios/SofaTap/Core/PeerTLSBridge.swift" \
+    "$REPO_ROOT/ios/SofaTap/Core/BluetoothTransport.swift" \
     "$REPO_ROOT/ios/SofaTap/Core/SavedDevice.swift" \
     "$REPO_ROOT/ios/SofaTap/Core/Pairing.swift" \
     "$REPO_ROOT/ios/SofaTap/Core/ReceiverState.swift" \

@@ -228,6 +228,15 @@ struct ReceiverView: View {
                     copyPairing: receiver.copyPairing,
                     quit: { NSApp.terminate(nil) }
                 )
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("蓝牙实验模式", isOn: Binding(
+                        get: { receiver.bluetoothEnabled }, set: receiver.setBluetoothEnabled))
+                        .accessibilityIdentifier("bluetoothExperimentalMode")
+                    Text(receiver.bluetoothStatus).font(.footnote).foregroundStyle(Palette.muted)
+                    Text("仅本次运行开启。在 iPhone 的连接模式中选择蓝牙，进行近距离对比。")
+                        .font(.footnote).foregroundStyle(Palette.muted)
+                }
+                .padding(.horizontal, 28).padding(.bottom, 20)
                 if loginItem.isAvailable {
                     Group {
                         if loginItem.needsFirstLaunchConsent {

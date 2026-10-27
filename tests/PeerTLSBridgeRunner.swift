@@ -23,7 +23,12 @@ import Network
             guard !relay.isActive else { fatalError("stopped relay still reported active") }
             try await Task.sleep(for: .milliseconds(100))
         }
+#if SOFATAP_BLE_SIMULATION
+        let proxy = SimulatedBluetoothBridge(backendPort: relayPort,
+            mtu: Int(ProcessInfo.processInfo.environment["SOFATAP_TEST_BLE_MTU"] ?? "20") ?? 20)
+#else
         let proxy = PeerTLSBridge(endpoint:.hostPort(host:"127.0.0.1",port:.init(rawValue:relayPort)!))
+#endif
         let port = try await proxy.start()
         defer { proxy.stop() }
         let configuration = URLSessionConfiguration.ephemeral

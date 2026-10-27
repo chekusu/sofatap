@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "点击麦克风后，在 iPhone 本机识别语音。实时模式会立即把识别文字同步到电脑；草稿模式由你检查后发送。";
 "NSSpeechRecognitionUsageDescription" = "使用本机语音识别，把你主动录入的语音变成文字。设备或语言不支持时，请改用键盘输入。";
 "NSMotionUsageDescription" = "启用体感输入时，使用 iPhone 的转动控制电脑光标。";
+
+"NSBluetoothAlwaysUsageDescription" = "Sofatap 使用蓝牙在已配对的 iPhone 与 Mac 之间进行实验性遥控。";

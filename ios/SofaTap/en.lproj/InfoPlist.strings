@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "When you tap the microphone, recognize speech on your iPhone. In live mode, recognized text is immediately sent to the computer; in draft mode, you review it before sending.";
 "NSSpeechRecognitionUsageDescription" = "Turn speech you record into text using on-device recognition. If your device or language is unsupported, use the keyboard instead.";
 "NSMotionUsageDescription" = "Use iPhone motion for pointer control when motion input is active.";
+
+"NSBluetoothAlwaysUsageDescription" = "Sofatap uses Bluetooth for experimental control between your paired iPhone and Mac.";

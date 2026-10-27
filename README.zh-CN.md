@@ -203,3 +203,10 @@ Host runner 使用模拟输入器。TLS/WebSocket 检查以 `--dry-run` 启动�
 欢迎提交 Issue 和 Pull Request，参与前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 Sofatap 采用 [MIT 许可](LICENSE)。第三方依赖通知见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+
+### 蓝牙对比实验（iPhone → Mac）
+
+开发版本在 iPhone 连接模式中提供 **蓝牙（实验）**。先在 Mac 接收器开启
+**蓝牙实验模式**（仅本次运行），再在已配对的 iPhone 上选择蓝牙。BLE 通道保留
+证书固定校验与配对认证，仍需 Mac 接收器，不会悄悄回退到 Wi-Fi。它不是原生蓝牙
+HID；无线延迟、可靠性和指针手感仍待真机验收。见[对比与验证说明](docs/verification/bluetooth-transport.md)。

@@ -20,6 +20,38 @@ final class ReceiverController: ObservableObject {
     @Published private(set) var accessRequested = false
     @Published private(set) var accessNotice: String?
 
+    @Published private(set) var bluetoothEnabled = false
+    @Published private(set) var bluetoothStatus = "蓝牙实验模式已关闭"
+    private var bluetoothRelay: MacBluetoothRelay?
+    private var bluetoothKey: String?
+
+    func setBluetoothEnabled(_ enabled: Bool) {
+        bluetoothEnabled = enabled
+        if let state { updateBluetoothRelay(state) }
+        else { stopBluetoothRelay() }
+    }
+
+    private func stopBluetoothRelay() {
+        bluetoothKey = nil
+        bluetoothRelay?.stop(); bluetoothRelay = nil
+        bluetoothStatus = "蓝牙实验模式已关闭"
+    }
+
+    private func updateBluetoothRelay(_ update: ReceiverState) {
+        guard bluetoothEnabled, let peer = update.peer else { stopBluetoothRelay(); return }
+        let key = "\(peer.port):\(peer.fingerprint.lowercased())"
+        guard key != bluetoothKey else { return }
+        stopBluetoothRelay(); bluetoothKey = key
+        bluetoothStatus = "正在启动蓝牙实验模式…"
+        let relay = MacBluetoothRelay(backendPort: peer.port, fingerprint: peer.fingerprint) { [weak self] status in
+            Task { @MainActor [weak self] in
+                guard let self, self.bluetoothKey == key else { return }
+                self.bluetoothStatus = status
+            }
+        }
+        bluetoothRelay = relay; relay.start()
+    }
+
     private var peerRelay: MacPeerRelay?
     private var peerRelayTask: Task<Void, Never>?
     private var peerRelayKey: String?
@@ -200,6 +232,7 @@ final class ReceiverController: ObservableObject {
         guard let child = process, child.isRunning else { cleanUp(); completion(true); return }
         isStopping = true
         stopPeerRelay()
+        stopBluetoothRelay()
         stopCompletion = completion
         state = nil
         selectedHost = nil
@@ -233,6 +266,7 @@ final class ReceiverController: ObservableObject {
         selectedHost = update.selectedHost(preserving: selectedHost)
         state = update
         updatePeerRelay(update)
+        updateBluetoothRelay(update)
         failure = nil
         isStarting = false
         scheduleWatchdog(id: id)
@@ -297,6 +331,7 @@ final class ReceiverController: ObservableObject {
 
     private func fail(_ message: String) {
         stopPeerRelay()
+        stopBluetoothRelay()
         state = nil
         selectedHost = nil
         copied = false
@@ -306,6 +341,7 @@ final class ReceiverController: ObservableObject {
 
     private func cleanUp() {
         stopPeerRelay()
+        stopBluetoothRelay()
         generation = UUID()
         watchdog?.cancel()
         stopTask?.cancel()

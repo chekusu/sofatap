@@ -70,7 +70,7 @@ cp "$publish_dir/SofaTap" "$app_dir/Contents/Helpers/SofaTapHost"
 xcrun swiftc -parse-as-library -swift-version 5 -O -target "$machine_arch-apple-macosx15.0" \
   -D SOFATAP_SPARKLE -F "$sparkle_dir" -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
-  desktop/macos/*.swift -o "$app_dir/Contents/MacOS/SofaTap"
+  ios/SofaTap/Core/BluetoothTransport.swift desktop/macos/*.swift -o "$app_dir/Contents/MacOS/SofaTap"
 mkdir -p "$app_dir/Contents/Frameworks"
 ditto "$sparkle_dir/Sparkle.framework" "$app_dir/Contents/Frameworks/Sparkle.framework"
 python3 - "$publish_dir" "$app_dir/Contents/Resources" <<'PY'
@@ -134,6 +134,7 @@ info = {
     "LSUIElement": False,
     "NSHighResolutionCapable": True,
     "NSBonjourServices": ["_sofatap-peer._tcp"],
+    "NSBluetoothAlwaysUsageDescription": "Sofatap uses Bluetooth to receive input from your paired iPhone when you enable experimental Bluetooth mode.",
     "NSLocalNetworkUsageDescription": "Sofatap 通过家庭局域网接收你已配对的 iPhone 发来的鼠标和文字操作。",
     "NSHumanReadableCopyright": "Copyright © CHEKUSU INC. Sofatap is available under the MIT license.",
 }

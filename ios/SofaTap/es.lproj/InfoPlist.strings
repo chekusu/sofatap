@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "Al tocar el micrófono, se reconoce tu voz en el iPhone. En modo de sincronización en tiempo real, el texto reconocido se envía inmediatamente al ordenador; en modo borrador, lo revisas antes de enviarlo.";
 "NSSpeechRecognitionUsageDescription" = "Convierte la voz que grabas en texto mediante reconocimiento en el dispositivo. Si tu dispositivo o idioma no es compatible, usa el teclado.";
 "NSMotionUsageDescription" = "Usa el movimiento del iPhone para controlar el puntero cuando la entrada por movimiento está activa.";
+
+"NSBluetoothAlwaysUsageDescription" = "Sofatap usa Bluetooth para el control experimental entre tu iPhone y Mac enlazados.";

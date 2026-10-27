@@ -3,3 +3,5 @@
 "NSMicrophoneUsageDescription" = "Ao tocar no microfone, sua fala é reconhecida no iPhone. No modo em tempo real, o texto reconhecido é enviado imediatamente ao computador; no modo rascunho, você revisa antes de enviar.";
 "NSSpeechRecognitionUsageDescription" = "Transforme sua fala gravada em texto com reconhecimento no dispositivo. Se o aparelho ou idioma não for compatível, use o teclado.";
 "NSMotionUsageDescription" = "Use o movimento do iPhone para controlar o ponteiro quando a entrada por movimento estiver ativa.";
+
+"NSBluetoothAlwaysUsageDescription" = "O Sofatap usa Bluetooth para controle experimental entre seu iPhone e Mac emparelhados.";

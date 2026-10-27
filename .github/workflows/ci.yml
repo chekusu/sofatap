@@ -137,6 +137,8 @@ jobs:
         run: bash scripts/macos/test-peer-lifecycle.sh
       - name: Pinned TLS peer bridge integration without OS input
         run: SOFATAP_DOTNET="$(command -v dotnet)" python3 tests/peer-tls-bridge.py
+      - name: Bluetooth bounded stream and simulated ATT TLS checks (no radio)
+        run: SOFATAP_DOTNET="$(command -v dotnet)" python3 scripts/macos/test-bluetooth.py
       - name: Mac updater policy without network or installation
         shell: bash
         run: |
@@ -155,7 +157,7 @@ jobs:
         shell: bash
         run: |
           xcrun swiftc -parse-as-library -swift-version 5 -D SOFATAP_UI_FIXTURE \
-            -target "$(uname -m)-apple-macosx15.0" desktop/macos/*.swift \
+            -target "$(uname -m)-apple-macosx15.0" ios/SofaTap/Core/BluetoothTransport.swift desktop/macos/*.swift \
             desktop/macos/tests/ReceiverAppearanceFixtures.swift -o "$RUNNER_TEMP/sofatap-appearance-fixtures"
           "$RUNNER_TEMP/sofatap-appearance-fixtures" artifacts/mint-calm
       - name: Save synthetic Mac UI fixtures

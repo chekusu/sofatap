@@ -28,7 +28,7 @@ struct PairingView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     savedDevices
-                    if model.desktopControlEnabled && model.peerConnectionAvailable { connectionModeSettings }
+                    if model.desktopControlEnabled && model.pairing != nil { connectionModeSettings }
                     VStack(alignment: .leading, spacing: 10) {
                         Text(String(localized: "添加设备")).font(.headline)
                         Button { showingAddDevice = true } label: {
@@ -105,13 +105,20 @@ struct PairingView: View {
             )) {
                 Text(String(localized: "自动（优先直连）")).tag(DesktopConnectionMode.automatic)
                 Text(String(localized: "普通 Wi-Fi")).tag(DesktopConnectionMode.wifi)
+                if model.supportsBluetoothTransport || model.connectionMode == .bluetooth {
+                    Text(String(localized: "蓝牙（实验）")).tag(DesktopConnectionMode.bluetooth)
+                }
             }
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
             .accessibilityIdentifier("desktopConnectionMode")
             Text(String(localized: "自动模式优先使用可用的设备直连，否则使用普通 Wi-Fi。切换模式会重新连接，选择会保留。"))
                 .font(.footnote).foregroundStyle(Palette.muted)
+            if model.connectionMode == .bluetooth {
+                Text(String(localized: "请在 Mac 接收器开启蓝牙实验模式。此模式不会自动回退到 Wi-Fi。"))
+                    .font(.footnote).foregroundStyle(Palette.muted)
+            }
             if model.connected {
-                Text(model.usesPeerTransport ? String(localized: "已连接 · 设备直连") : String(localized: "已连接 · 普通 Wi-Fi"))
+                Text(model.usesBluetoothTransport ? String(localized: "已连接 · 蓝牙 BLE") : model.usesPeerTransport ? String(localized: "已连接 · 设备直连") : String(localized: "已连接 · 普通 Wi-Fi"))
                     .font(.footnote).foregroundStyle(Palette.mint)
             }
         }

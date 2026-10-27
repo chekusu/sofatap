@@ -23,6 +23,7 @@ targets:
     type: application
     platform: macOS
     sources:
+      - path: ../../ios/SofaTap/Core/BluetoothTransport.swift
       - path: ../../desktop/macos
         excludes: [tests, README.md]
     info:
@@ -37,6 +38,7 @@ targets:
         NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
         NSBonjourServices: ["_sofatap-peer._tcp"]
+        NSBluetoothAlwaysUsageDescription: Sofatap uses Bluetooth to receive input from your paired iPhone when you enable experimental Bluetooth mode.
         NSLocalNetworkUsageDescription: Sofatap receives mouse and keyboard commands from your paired iPhone over your local network.
         NSHumanReadableCopyright: Copyright © CHEKUSU INC. Sofatap is available under the MIT license.
         ITSAppUsesNonExemptEncryption: false

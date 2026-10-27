@@ -203,3 +203,12 @@ Local build artifacts, pairing credentials and signing material are not source f
 Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
 Sofatap is released under the [MIT license](LICENSE). See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for dependency notices.
+
+### Experimental Bluetooth comparison (iPhone → Mac)
+
+Development builds offer **Bluetooth (beta)** under the iPhone's connection mode.
+Enable **蓝牙实验模式** in the Mac receiver for the current run, then select Bluetooth
+on the paired iPhone. This BLE channel preserves pinned TLS and pairing checks;
+it still requires the Mac receiver and never silently falls back to Wi-Fi.
+It is not native Bluetooth HID. Radio latency, reliability and pointer feel remain
+pending device acceptance. See [comparison and verification](docs/verification/bluetooth-transport.md).

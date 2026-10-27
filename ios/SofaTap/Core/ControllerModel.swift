@@ -6,7 +6,7 @@ import CryptoKit
 import Darwin
 
 enum DesktopConnectionMode: String {
-    case automatic, wifi
+    case automatic, wifi, bluetooth
 }
 
 enum TextDelivery: Equatable {
@@ -85,7 +85,7 @@ final class ControllerModel: ObservableObject {
 
     func startPeerAvailabilityMonitoring() {
         availabilityMonitoringRequested = true
-        guard !demo, foreground, desktopControlEnabled, let pairing,
+        guard !demo, foreground, desktopControlEnabled, connectionMode != .bluetooth, let pairing,
               PeerTransportDiscovery.shouldAttempt(platform: pairing.platform) else {
             resetPeerAvailabilityMonitoring(); return
         }
@@ -127,6 +127,8 @@ final class ControllerModel: ObservableObject {
         guard connectionMode != mode else { return }
         let reconnect = connected || connecting || reconnectID != nil
         connectionMode = mode
+        if mode == .bluetooth { resetPeerAvailabilityMonitoring() }
+        else if availabilityMonitoringRequested { startPeerAvailabilityMonitoring() }
         if !demo { connectionDefaults?.set(mode.rawValue, forKey: Self.connectionModeKey) }
         // A route change ends the gesture/session; no pending input crosses routes.
         disconnect()
@@ -134,6 +136,10 @@ final class ControllerModel: ObservableObject {
     }
 
     var usesPeerTransport: Bool { connected && peerConnectionAttempt }
+    var supportsBluetoothTransport: Bool { pairing != nil && (pairing?.platform == nil || pairing?.platform == "macos") }
+    var usesBluetoothTransport: Bool { connected && bluetoothConnectionAttempt }
+    private var bluetoothConnectionAttempt = false
+    private var bluetoothBridge: BluetoothTLSBridge?
     private var peerConnectionAttempt = false
     private var preferLANForNextAttempt = false
     private var routePreparation: Task<Void, Never>?
@@ -156,7 +162,7 @@ final class ControllerModel: ObservableObject {
     // LAN can spend 80–100 ms awaiting ACKs even when touch delivery is 120 Hz.
     // Twelve slots avoid an extra sender pause; the 120 ms oldest-flight gate
     // still prevents unlimited backlog. Keep the measured peer window unchanged.
-    private var maximumMovementFlights: Int { peerConnectionAttempt ? 8 : 12 }
+    private var maximumMovementFlights: Int { (peerConnectionAttempt || bluetoothConnectionAttempt) ? 8 : 12 }
     private var movementTime: TimeInterval { ProcessInfo.processInfo.systemUptime }
     // Keep the remote button down until its final queued movement is acknowledged.
     @Published private var dragReleasePending = false
@@ -639,6 +645,40 @@ final class ControllerModel: ObservableObject {
         inputAvailable = false
         receiverState = ReceiverState()
         notice = String(localized: "正在验证电脑证书与配对凭据…")
+        if connectionMode == .bluetooth {
+            guard supportsBluetoothTransport else {
+                bluetoothPreparationFailed(generation: currentGeneration); return
+            }
+#if SOFATAP_CONTROLLER_TESTING
+            if let testPrepareConnection {
+                testPrepareConnection { [weak self] port in
+                    guard let self, self.generation == currentGeneration else { return }
+                    if let port {
+                        self.openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                            generation: currentGeneration, loopbackPort: port)
+                    } else { self.bluetoothPreparationFailed(generation: currentGeneration) }
+                }
+                return
+            }
+#endif
+            let bridge = BluetoothTLSBridge(fingerprint: pairing.fingerprint)
+            bluetoothBridge = bridge
+            routePreparation = Task { [weak self] in
+                do {
+                    let port = try await bridge.start()
+                    try Task.checkCancellation()
+                    guard let self, self.generation == currentGeneration else { bridge.stop(); return }
+                    self.routePreparation = nil
+                    self.openAuthenticatedConnection(pairing: pairing, endpoint: endpoint,
+                        generation: currentGeneration, loopbackPort: port)
+                } catch {
+                    bridge.stop()
+                    guard !Task.isCancelled, let self else { return }
+                    self.bluetoothPreparationFailed(generation: currentGeneration)
+                }
+            }
+            return
+        }
         let skipPeer = connectionMode == .wifi || preferLANForNextAttempt
         preferLANForNextAttempt = false
 #if SOFATAP_CONTROLLER_TESTING
@@ -687,10 +727,20 @@ final class ControllerModel: ObservableObject {
                                     generation: currentGeneration, loopbackPort: nil)
     }
 
+    private func bluetoothPreparationFailed(generation failedGeneration: UUID) {
+        guard generation == failedGeneration else { return }
+        automaticReconnectBlocked = true
+        disconnect(message: String(localized: "蓝牙连接失败。请确认两端蓝牙权限、Mac 实验模式开关与距离，再点连接重试。"))
+    }
+
     private func openAuthenticatedConnection(pairing: Pairing, endpoint: URL,
                                              generation currentGeneration: UUID, loopbackPort: UInt16?) {
         guard generation == currentGeneration, connecting, foreground, self.pairing == pairing else { return }
-        peerConnectionAttempt = loopbackPort != nil
+        bluetoothConnectionAttempt = loopbackPort != nil && connectionMode == .bluetooth
+        peerConnectionAttempt = loopbackPort != nil && !bluetoothConnectionAttempt
+#if DEBUG
+        PointerTiming.shared.beginSession(transport: bluetoothConnectionAttempt ? "ble" : peerConnectionAttempt ? "peer" : "wifi")
+#endif
 #if SOFATAP_CONTROLLER_TESTING
         if let testPairingConnect { testPairingConnect(pairing); return }
 #endif
@@ -797,6 +847,7 @@ final class ControllerModel: ObservableObject {
     func disconnect(message: String = String(localized: "已断开连接。"), preservingRetryAttempt: Bool = false) {
         cancelReconnect(resetAttempt: !preservingRetryAttempt)
         peerConnectionAttempt = false
+        bluetoothConnectionAttempt = false
         preferLANForNextAttempt = false
         invalidateLiveText(pause: liveTextSession != nil || liveTextStatus == .starting)
         stopAirMouse()
@@ -819,6 +870,7 @@ final class ControllerModel: ObservableObject {
         generation = UUID()
         routePreparation?.cancel(); routePreparation = nil
         peerBridge?.stop(); peerBridge = nil
+        bluetoothBridge?.stop(); bluetoothBridge = nil
         peerDiscovery?.stop(); peerDiscovery = nil
         let oldSocket = socket
         let oldSession = session

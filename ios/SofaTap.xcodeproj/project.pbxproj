@@ -20,6 +20,7 @@
 		320D03B356374CB42AB659EB /* GestureConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CD153A949AB5AE1D0EF3CC3 /* GestureConfiguration.swift */; };
 		390FF8AC98B4923D8FE0BD44 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 951A32A70DFF898858DD7CDD /* Assets.xcassets */; };
 		3D5EF8B303AB20CF62A7EAE4 /* UnlockProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4A7AE9B52EF945FBF4ADE53 /* UnlockProtocol.swift */; };
+		555381DE08FAA13570BCAD85 /* BluetoothTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E8898E72BD342E8CF755033 /* BluetoothTransport.swift */; };
 		57D1C6677714CCDE21AC5467 /* AndroidTVProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = D18FB04130086BA45CCC4601 /* AndroidTVProtocol.swift */; };
 		5B741448790C9BB1956C5E80 /* DeviceGuideContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53495476F4E1A21926CBCAD3 /* DeviceGuideContext.swift */; };
 		5D0340905D716092B60EFB61 /* WebOSTVSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D0C75FD36E4B1EB7AB94922 /* WebOSTVSocket.swift */; };
@@ -71,6 +72,7 @@
 		27466787F2CA3B385E583839 /* AndroidTVNavigationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AndroidTVNavigationView.swift; sourceTree = "<group>"; };
 		28E007C2BEF814D3E66D04AD /* RemoteGuideView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteGuideView.swift; sourceTree = "<group>"; };
 		2D0FBB7BB69219144E687559 /* RemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteView.swift; sourceTree = "<group>"; };
+		2E8898E72BD342E8CF755033 /* BluetoothTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransport.swift; sourceTree = "<group>"; };
 		2EEF117295FCDC44389DDD7D /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		3717B15001E2480956B638CE /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3B025E89091221B07940DE33 /* PeerTransportDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerTransportDiscovery.swift; sourceTree = "<group>"; };
@@ -136,6 +138,7 @@
 		48AD4029C135513A254E55C4 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				2E8898E72BD342E8CF755033 /* BluetoothTransport.swift */,
 				5315D7C30FD44FEBDC00AB29 /* ComputerUnlockController.swift */,
 				7A3175A3377E3E1F6F1FD381 /* ControllerModel.swift */,
 				53495476F4E1A21926CBCAD3 /* DeviceGuideContext.swift */,
@@ -322,6 +325,7 @@
 				0880E9F8731F50DEA8E7378E /* AndroidTVPairingView.swift in Sources */,
 				57D1C6677714CCDE21AC5467 /* AndroidTVProtocol.swift in Sources */,
 				6C8981371521C6494A9E86D5 /* AndroidTVSocket.swift in Sources */,
+				555381DE08FAA13570BCAD85 /* BluetoothTransport.swift in Sources */,
 				A48C6B42061DF866CF421F83 /* ComputerUnlockController.swift in Sources */,
 				68E7813DE872359DEE8A3E06 /* ComputerUnlockView.swift in Sources */,
 				235031F88751C7AF87089F98 /* ControllerModel.swift in Sources */,

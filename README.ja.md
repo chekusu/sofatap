@@ -203,3 +203,12 @@ Host runner は模擬入力を使います。TLS/WebSocket の確認は一時的
 Issue とプルリクエストを歓迎します。参加する前に [CONTRIBUTING.md](CONTRIBUTING.md) をお読みください。
 
 Sofatap は [MIT ライセンス](LICENSE)で公開しています。依存関係の通知は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) をご覧ください。
+
+### Bluetooth 比較実験（iPhone → Mac）
+
+開発版の iPhone 接続モードには **Bluetooth（試験）** があります。Mac 受信アプリで
+**蓝牙实验模式** を今回の起動中だけ有効にして、ペアリング済みの iPhone で Bluetooth
+を選択してください。BLE 経路でも証明書ピンニングとペアリング認証を維持し、Mac
+受信アプリが必要です。Wi-Fi に自動で切り替わることはありません。ネイティブの
+Bluetooth HID ではなく、無線遅延・信頼性・操作感は実機での確認待ちです。
+[比較・検証の説明](docs/verification/bluetooth-transport.md)を参照してください。
