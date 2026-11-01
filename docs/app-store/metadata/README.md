@@ -3,7 +3,7 @@
 This is the canonical `asc metadata` directory for Sofatap iPhone/iPad. English (U.S.) is the primary locale.
 
 - `version/1.0/` is the metadata live with 1.0 (build 23), approved and released on October 31, 2026. Keep it as the record of that release.
-- `version/1.0.1/` is staged for the next version (November 1, 2026). It carries the App Store keyword update, the computer volume and pointer speed features from #12 and the TV navigation changes on main. `app-info/` now holds the 1.0.1 names and subtitles.
+- `version/1.0.1/` is staged for the next version (November 1, 2026). It carries the App Store keyword update, the pointer speed setting from #12 and the TV navigation changes on main. `app-info/` now holds the 1.0.1 names and subtitles.
 
 Since 1.0.1 the public name is **Sofatap** plus a short descriptor (for example "Sofatap: Remote for PC & TV"), so the name carries searchable category words. The app's on-device display name stays Sofatap. 1.0.1 adds two locales, **en-GB** and **es-MX**. English (U.K.) is the default store language in India, Indonesia and Saudi Arabia and an indexed second language in many other storefronts. Spanish (Mexico) serves Latin America. Sofatap is not distributed in the EU, so es-ES, de-DE and fr-FR reach few storefronts. Apple's [storefront language table](https://developer.apple.com/help/app-store-connect/reference/app-store-localizations) lists which locales each storefront uses.
 
@@ -11,7 +11,7 @@ Metadata rules for these files: no other mobile platform names (Android, Google 
 
 Field timing: promotional text can be edited on a live version without review. Name, subtitle, keywords, description, What's New and new locales apply only through a new version that passes review.
 
-Before pushing 1.0.1, update the receiver download link in every description to the desktop receiver release that includes #12 volume support. The links still point to v0.8.1-beta.1.
+The 1.0.1 build also contains the #12 computer volume control, but the metadata does not advertise it: no public desktop receiver supports it yet, and reviewers use receiver 0.8.1 beta.1. Add it to the store copy in the version after a receiver with volume support is published (Bruce's decision, November 1, 2026).
 
 | App/site language | App Store locale |
 | --- | --- |
