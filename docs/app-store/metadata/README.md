@@ -36,6 +36,19 @@ The 1.0 text describes manual desktop controls and explains conditional live edi
 
 Screenshots and previews are managed separately. Apple can inherit primary-language images when a localization is added; inherited English images are not localized images. Earlier media used actual build-15 device captures. Inspect retained media against build 23, including the old guide's embedded gesture labels, and provide the required iPad screenshot coverage before submitting the universal build. Do not represent a retained build-15 capture as a new build-23 capture. [Apple localization guidance](https://developer.apple.com/help/app-store-connect/manage-app-information/localize-app-information).
 
+
+## Release through GitHub Actions (1.0.1 and later)
+
+The [iOS App Store release workflow](../../../.github/workflows/ios-app-store.yml) is run by hand from the Actions tab. It reads the version from `ios/project.yml`, archives with cloud-managed signing on a GitHub macOS runner, and uses [`scripts/app_store_release.py`](../../../scripts/app_store_release.py) for App Store Connect. It needs four repository secrets: `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` (an Admin-role team API key) and `APPLE_TEAM_ID`.
+
+| Mode | What it does |
+| --- | --- |
+| `check` | Build and export the IPA as an artifact; print a read-only metadata plan. Changes nothing in App Store Connect. |
+| `upload` | Also upload the build, create the version if needed, write `app-info/` and `version/<version>/` localizations, and attach the build once it is processed. |
+| `submit` | Also set the reviewer notes (contact details are copied from the previous version) and submit for App Review. |
+
+The script never deletes locales or files. Screenshots are not managed here; new locales fall back to the primary-language screenshots.
+
 ## Validate and inspect a draft update
 
 Run from the repository root:
