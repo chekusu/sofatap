@@ -1,0 +1,163 @@
+name: iOS App Store release
+
+# Manual only. Builds the iPhone/iPad app from the selected ref with cloud-managed signing,
+# then (depending on `mode`) uploads it, syncs the App Store metadata, and submits for review.
+#
+# Required repository secrets:
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8  App Store Connect team API key (Admin role, for cloud signing)
+#   APPLE_TEAM_ID                         10-character Apple Developer team ID
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = build + read-only plan; upload = also upload, write metadata and attach the build; submit = also submit for App Review"
+        type: choice
+        options: [check, upload, submit]
+        default: check
+      review_notes:
+        description: Reviewer notes file (used in submit mode)
+        type: string
+        default: docs/app-store/app-store-1.0.1-24-review-notes.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-app-store-release
+  cancel-in-progress: false
+
+env:
+  APP_ID: "6822188472"
+
+jobs:
+  release:
+    name: Build, upload and submit (${{ inputs.mode }})
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check secrets and read the version
+        id: version
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then echo "::error::Missing repository secrets:$missing"; exit 1; fi
+          version=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\} *$/\1/p' ios/project.yml)
+          build=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *"\{0,1\}\([0-9]*\)"\{0,1\} *$/\1/p' ios/project.yml)
+          [ -n "$version" ] && [ -n "$build" ] || { echo "::error::Could not read the version from ios/project.yml"; exit 1; }
+          grep -q "MARKETING_VERSION = $version;" ios/SofaTap.xcodeproj/project.pbxproj || { echo "::error::project.pbxproj version differs from project.yml"; exit 1; }
+          grep -q "CURRENT_PROJECT_VERSION = $build;" ios/SofaTap.xcodeproj/project.pbxproj || { echo "::error::project.pbxproj build differs from project.yml"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version ($build) from $GITHUB_SHA"
+
+      - name: Install the API key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install the App Store Connect API dependencies
+        run: python3 -m pip install 'PyJWT[crypto]==2.10.1'
+
+      - name: Read-only metadata plan
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >-
+          python3 scripts/app_store_release.py --app "$APP_ID"
+          --version "${{ steps.version.outputs.version }}" --build "${{ steps.version.outputs.build }}" --plan
+
+      - name: Select the newest installed Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
+          sudo xcode-select -s "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - name: Archive with cloud-managed signing
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive -project ios/SofaTap.xcodeproj -scheme SofaTap -configuration Release \
+            -destination generic/platform=iOS -archivePath "$RUNNER_TEMP/SofaTap.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic
+
+      - name: Export the App Store package (and upload unless check mode)
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          destination=upload
+          [ "$MODE" = check ] && destination=export
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$destination</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/SofaTap.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          ls -la "$RUNNER_TEMP/export"
+          if ls "$RUNNER_TEMP"/export/*.ipa >/dev/null 2>&1; then shasum -a 256 "$RUNNER_TEMP"/export/*.ipa; fi
+
+      - name: Keep the exported package
+        if: inputs.mode == 'check'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sofatap-ios-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
+          path: ${{ runner.temp }}/export/
+          if-no-files-found: error
+
+      - name: Write metadata and attach the processed build
+        if: inputs.mode != 'check'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: >-
+          python3 scripts/app_store_release.py --app "$APP_ID"
+          --version "${{ steps.version.outputs.version }}" --build "${{ steps.version.outputs.build }}"
+          --apply-metadata --attach-build
+
+      - name: Set reviewer notes and submit for App Review
+        if: inputs.mode == 'submit'
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          NOTES: ${{ inputs.review_notes }}
+        run: >-
+          python3 scripts/app_store_release.py --app "$APP_ID"
+          --version "${{ steps.version.outputs.version }}" --build "${{ steps.version.outputs.build }}"
+          --review-notes "$NOTES" --submit
+
+      - name: Remove the API key
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/asc"
