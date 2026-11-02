@@ -7,6 +7,8 @@ This is the canonical `asc metadata` directory for Sofatap iPhone/iPad. English 
 
 Since 1.0.1 the public name is **Sofatap** plus a short descriptor (for example "Sofatap: Remote for PC & TV"), so the name carries searchable category words. The app's on-device display name stays Sofatap. 1.0.1 adds two locales, **en-GB** and **es-MX**. English (U.K.) is the default store language in India, Indonesia and Saudi Arabia and an indexed second language in many other storefronts. Spanish (Mexico) serves Latin America. Sofatap is not distributed in the EU, so es-ES, de-DE and fr-FR reach few storefronts. Apple's [storefront language table](https://developer.apple.com/help/app-store-connect/reference/app-store-localizations) lists which locales each storefront uses.
 
+The 1.0.1 marketing and support URLs are https://sofatap.app/ and https://sofatap.app/support/, the same as the live 1.0 listing. The `version/1.0/` files still hold the earlier GitHub URLs that were staged before the website routes were live.
+
 Metadata rules for these files: no other mobile platform names (Android, Google TV) per guideline 2.3.10; no third-party trademarks or app names such as Steam in keywords; label smart TV control as beta until TV hardware acceptance is recorded; do not repeat name/subtitle words in the keyword field.
 
 Field timing: promotional text can be edited on a live version without review. Name, subtitle, keywords, description, What's New and new locales apply only through a new version that passes review.
@@ -56,10 +58,12 @@ Run from the repository root:
 ```sh
 asc metadata validate --dir docs/app-store/metadata --output json
 asc metadata push --app 6822188472 \
-  --app-info fedc6f5f-1afd-4162-8160-c0100ba98632 \
+  --app-info af1c12f1-7b11-4518-9644-c7fc92174fed \
   --version 1.0.1 --platform IOS \
   --dir docs/app-store/metadata --dry-run --output json
 ```
+
+The app-info ID must be the editable record for the version being prepared. `fedc6f5f-1afd-4162-8160-c0100ba98632` is the record that went live with 1.0 and is locked; `af1c12f1-7b11-4518-9644-c7fc92174fed` was created with 1.0.1 (November 2, 2026). After 1.0.1 goes live, look up the next editable record with the app-info list before pushing.
 
 Review the differences, then omit `--dry-run` to save the draft. Do not add `--allow-deletes`. These files do not change screenshots, privacy questionnaire publication, price, availability or release type. Read back the saved metadata and run `asc validate` afterward.
 

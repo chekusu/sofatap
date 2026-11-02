@@ -3,6 +3,6 @@
   "keywords": "windows,trackpad,touchpad,computer,laptop,desktop,gaming,smart,dictation,typing,wifi,switch,sofa",
   "promotionalText": "One iPhone for every screen at home: your Windows PC, Mac, Linux machine, the gaming PC in the living room and supported smart TVs (beta). Switch devices in one tap.",
   "whatsNew": "• New pointer speed setting, from 0.25× to 3×.\n• Smart TV (beta): steadier navigation and shortcuts to open supported video apps.",
-  "supportUrl": "https://github.com/chekusu/sofatap/blob/main/docs/app-store/support.md",
-  "marketingUrl": "https://github.com/chekusu/sofatap"
+  "supportUrl": "https://sofatap.app/support/",
+  "marketingUrl": "https://sofatap.app/"
 }

@@ -3,6 +3,6 @@
   "keywords": "鼠标,键盘,触控板,遥控器,游戏本,电竞,主机,客厅,沙发,智能,笔记本,台式机,语音输入,打字,无线,局域网,远程,空鼠,手机控制,跨平台,多设备,办公",
   "promotionalText": "一部 iPhone，掌控家里的每一块屏幕：Windows、Mac、Linux 电脑，客厅里的游戏电脑，以及支持的智能电视（测试版）。在设备之间切换，只需轻点一下。",
   "whatsNew": "• 新增指针速度设置，范围 0.25× 至 3×。\n• 智能电视（测试版）：导航更稳定，并可快速打开支持的视频应用。",
-  "supportUrl": "https://github.com/chekusu/sofatap/blob/main/docs/app-store/support.md",
-  "marketingUrl": "https://github.com/chekusu/sofatap"
+  "supportUrl": "https://sofatap.app/support/",
+  "marketingUrl": "https://sofatap.app/"
 }

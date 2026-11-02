@@ -3,6 +3,6 @@
   "keywords": "マウス,キーボード,タッチパッド,トラックパッド,リモコン,パソコン,ゲーミング,リビング,ソファ,音声入力,文字入力,無線,スマートテレビ,遠隔操作,ノート,ワイヤレス,操作アプリ",
   "promotionalText": "1 台の iPhone で、家じゅうの画面を操作。Windows、Mac、Linux のパソコン、リビングのゲーミング PC、対応スマートテレビ（ベータ）まで。機器の切り替えはワンタップ。",
   "whatsNew": "• ポインタ速度の設定を追加（0.25×〜3×）。\n• スマートテレビ（ベータ）：ナビゲーションが安定し、対応動画アプリをすぐ開けるショートカットを追加。",
-  "supportUrl": "https://github.com/chekusu/sofatap/blob/main/docs/app-store/support.md",
-  "marketingUrl": "https://github.com/chekusu/sofatap"
+  "supportUrl": "https://sofatap.app/support/",
+  "marketingUrl": "https://sofatap.app/"
 }
