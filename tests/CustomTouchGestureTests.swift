@@ -169,7 +169,7 @@ struct ConfigurableGestureTests {
         _ = lateMulti.begin(at: p, count: 2, time: 1.27)
         check("late arriving second finger cannot turn old contact into tap", lateMulti.end(at: p, remainingCount: 0, time: 1.3).isEmpty)
 
-        var transition = State(configuration: multi)
+        var transition = State(configuration: config([.twoFingerTap: .rightClick, .threeFingerTap: .toggleKeyboard, .longPress: .drag]))
         _ = transition.begin(at: p, count: 1, time: 0)
         _ = transition.advance(to: 0.3)
         check("second finger releases drag before changing semantics", transition.begin(at: p, count: 2, time: 0.31) == [.dragging(false)])
