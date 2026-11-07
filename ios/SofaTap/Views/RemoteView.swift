@@ -59,6 +59,9 @@ struct RemoteView: View {
     @State private var speechRequest: UUID?
     @State private var speechOwnsDraft = false
     @State private var dictationStartTask: Task<Void, Never>?
+    @State private var shortcutPanel: ShortcutPanelSelection?
+    @State private var shortcutPanelTracking = false
+    @AppStorage("sofatap.lastDesktopShortcut") private var lastDesktopShortcut = DesktopShortcut.space.rawValue
 
     private var speechBusy: Bool { dictation.state != .idle }
     private var televisionSelected: Bool {
@@ -468,6 +471,7 @@ struct RemoteView: View {
                          onDraggingChanged: { if !televisionSelected { model.setDragging($0) } },
                          onScroll: scrollCurrentDevice,
                          onShortcut: performGestureShortcut,
+                         onShortcutPanel: handleShortcutPanel,
                          onInteractionBegan: { tvAuxiliaryControl.cancel() })
                 .allowsHitTesting(!tvNavigationSelected)
             if tvNavigationSelected {
@@ -519,7 +523,63 @@ struct RemoteView: View {
                 }
             }
         }
+        .overlay {
+            if let panel = shortcutPanel {
+                DesktopShortcutPanel(selection: panel, tracking: shortcutPanelTracking,
+                                     macOS: model.receiverState.platform == .macos,
+                                     onSend: { sendDesktopShortcut(DesktopShortcut.allCases[$0]) },
+                                     onClose: closeShortcutPanel)
+                    .allowsHitTesting(!shortcutPanelTracking)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: shortcutPanel == nil)
         .clipShape(RoundedRectangle(cornerRadius: 40, style: .continuous))
+        .onChange(of: inputEnabled) { _, enabled in if !enabled { closeShortcutPanel() } }
+        .onChange(of: televisionSelected) { _, _ in closeShortcutPanel() }
+    }
+
+    private func handleShortcutPanel(_ event: TouchSurface.ShortcutPanelEvent) {
+        switch event {
+        case .open(let tracking, let x, let y):
+            guard inputEnabled, !televisionSelected else { return }
+            edgeScrollControl.cancel()
+            let start = DesktopShortcut.allCases.firstIndex { $0.rawValue == lastDesktopShortcut } ?? 0
+            shortcutPanel = ShortcutPanelSelection(count: DesktopShortcut.allCases.count, start: start, x: x, y: y)
+            shortcutPanelTracking = tracking
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            UIAccessibility.post(notification: .screenChanged, argument: nil)
+        case .move(let x, let y):
+            guard shortcutPanelTracking, var panel = shortcutPanel else { return }
+            let wasCancelling = panel.cancelling
+            if panel.move(x: x, y: y) { UISelectionFeedbackGenerator().selectionChanged() }
+            if panel.cancelling != wasCancelling { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+            shortcutPanel = panel
+        case .lift:
+            guard shortcutPanelTracking, let panel = shortcutPanel else { return }
+            shortcutPanelTracking = false
+            switch panel.release {
+            case .send(let index): sendDesktopShortcut(DesktopShortcut.allCases[index])
+            case .keepOpen: break
+            case .close: closeShortcutPanel()
+            }
+        case .cancel:
+            if shortcutPanelTracking { closeShortcutPanel() }
+        }
+    }
+
+    private func sendDesktopShortcut(_ shortcut: DesktopShortcut) {
+        closeShortcutPanel()
+        guard inputEnabled, !televisionSelected else { return }
+        lastDesktopShortcut = shortcut.rawValue
+        let stroke = shortcut.keystroke(macOS: model.receiverState.platform == .macos)
+        model.key(stroke.key, modifiers: stroke.modifiers)
+    }
+
+    private func closeShortcutPanel() {
+        guard shortcutPanel != nil || shortcutPanelTracking else { return }
+        shortcutPanel = nil
+        shortcutPanelTracking = false
     }
 
     private var edgeScrollStrip: some View {
@@ -1096,3 +1156,91 @@ private struct SystemVolumeSheet: View {
 }
 
 #Preview { RemoteView(model: ControllerModel(demo: true)).preferredColorScheme(.dark) }
+
+/// A dimmed overlay over the touchpad, like an accessibility menu. While the
+/// opening finger is down it only shows the highlight; afterwards it can be
+/// swiped and tapped. Physical left and right always map to the row order.
+private struct DesktopShortcutPanel: View {
+    let selection: ShortcutPanelSelection
+    let tracking: Bool
+    let macOS: Bool
+    let onSend: (Int) -> Void
+    let onClose: () -> Void
+    private let shortcuts = DesktopShortcut.allCases
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Color.black.opacity(0.62))
+                .contentShape(Rectangle())
+                .onTapGesture { onClose() }
+                .accessibilityHidden(true)
+            VStack(spacing: 14) {
+                let current = shortcuts[selection.index]
+                VStack(spacing: 4) {
+                    Text(current.title).font(.system(size: 22, weight: .semibold))
+                    Text(current.keyCap(macOS: macOS)).font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(Palette.mint.opacity(0.9))
+                }
+                .opacity(tracking && selection.cancelling ? 0.4 : 1)
+                .accessibilityHidden(tracking)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(shortcuts.indices, id: \.self) { index in
+                                cell(index).id(index)
+                            }
+                        }
+                        .padding(.horizontal, 28).padding(.vertical, 8)
+                    }
+                    .scrollDisabled(tracking)
+                    .onAppear { proxy.scrollTo(selection.index, anchor: .center) }
+                    .onChange(of: selection.index) { _, index in
+                        withAnimation(.easeOut(duration: 0.12)) { proxy.scrollTo(index, anchor: .center) }
+                    }
+                }
+                Text(hint).font(.footnote).foregroundStyle(Palette.muted)
+                    .multilineTextAlignment(.center).padding(.horizontal, 24)
+                if !tracking {
+                    Button(String(localized: "完成"), action: onClose)
+                        .buttonStyle(.bordered).tint(Palette.mint)
+                        .accessibilityIdentifier("desktopShortcutPanelClose")
+                }
+            }
+        }
+        .environment(\.layoutDirection, .leftToRight)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "快捷键面板"))
+        .accessibilityIdentifier("desktopShortcutPanel")
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private var hint: String {
+        if !tracking { return String(localized: "轻点发送，左右滑动查看更多") }
+        if selection.cancelling { return String(localized: "松手取消") }
+        return String(localized: "左右滑动选择，松手发送") + "\n" + String(localized: "上下移开后松手取消")
+    }
+
+    private func cell(_ index: Int) -> some View {
+        let shortcut = shortcuts[index]
+        let selected = index == selection.index
+        return Button { onSend(index) } label: {
+            VStack(spacing: 6) {
+                Image(systemName: shortcut.symbol).font(.system(size: 21, weight: .regular))
+                Text(shortcut.keyCap(macOS: macOS)).font(.system(size: 11, weight: .medium, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .frame(width: 64, height: 68)
+            .foregroundStyle(Palette.mint)
+            .background(Palette.mint.opacity(selected ? 0.26 : 0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Palette.mint.opacity(selected ? 0.8 : 0.16), lineWidth: selected ? 1.5 : 1)
+            }
+            .scaleEffect(tracking && selected ? 1.08 : 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(shortcut.title)
+        .accessibilityValue(shortcut.keyCap(macOS: macOS))
+        .accessibilityIdentifier("desktopShortcut_" + shortcut.rawValue)
+    }
+}

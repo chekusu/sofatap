@@ -275,7 +275,8 @@ struct GesturePracticeView: View {
                                  else { result = String(localized: "已松开") }
                              },
                              onScroll: { _ in show(.scroll) },
-                             onShortcut: { show($0) })
+                             onShortcut: { show($0) },
+                             onShortcutPanel: { if case .open = $0 { show(.shortcutPanel) } })
                     .background(Palette.panel, in: RoundedRectangle(cornerRadius: 30))
                     .overlay(RoundedRectangle(cornerRadius: 30).stroke(Palette.mint.opacity(0.22), lineWidth: 1))
                     .clipShape(RoundedRectangle(cornerRadius: 30))

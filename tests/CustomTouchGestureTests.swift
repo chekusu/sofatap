@@ -51,6 +51,14 @@ struct ConfigurableGestureTests {
         check("double tap hold differs from ordinary long press", hold.advance(to: 2.42) == [.dragging(true)])
         check("double tap hold releases once", hold.end(at: p, remainingCount: 0, time: 2.5) == [.dragging(false)] && hold.cancel().isEmpty)
 
+        var panelHold = State(configuration: config([.longPress: .shortcutPanel, .doubleTapHold: .drag]))
+        _ = panelHold.begin(at: p, count: 1, time: 0)
+        check("hold opens the shortcut panel once", panelHold.advance(to: 0.3) == [.shortcut(.shortcutPanel)] && !panelHold.isDragging)
+        check("panel hold lift never clicks", panelHold.end(at: p, remainingCount: 0, time: 0.8).isEmpty && panelHold.advance(to: 2).isEmpty)
+        var panelTap = State(configuration: config([.threeFingerTap: .shortcutPanel]))
+        _ = panelTap.begin(at: p, count: 3, time: 0)
+        check("three finger tap can open the shortcut panel", panelTap.end(at: p, remainingCount: 0, time: 0.1) == [.shortcut(.shortcutPanel)])
+
         var pairAsSingles = State(configuration: config([.leftDoubleTap: .none, .rightDoubleTap: .none,
                                                         .singleTap: .confirm, .doubleTapHold: .drag]))
         _ = tap(&pairAsSingles)

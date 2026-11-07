@@ -272,7 +272,7 @@ struct TouchGestureState {
         case .rightClick: return [.rightClick]
         case .doubleLeftClick: return [.leftClick, .leftClick]
         case .doubleRightClick: return [.rightClick, .rightClick]
-        case .confirm, .back, .home, .toggleKeyboard, .toggleDictation: return [.shortcut(action)]
+        case .confirm, .back, .home, .toggleKeyboard, .toggleDictation, .shortcutPanel: return [.shortcut(action)]
         case .none, .drag, .movePointer, .scroll: return []
         }
     }

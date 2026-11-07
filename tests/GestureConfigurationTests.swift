@@ -18,7 +18,7 @@ struct GestureConfigurationTests {
         let legacy = GestureConfiguration()
         check("new desktop installation retains left-half double left click", legacy.action(for: .leftDoubleTap) == .doubleLeftClick)
         check("new desktop installation retains right-half double right click", legacy.action(for: .rightDoubleTap) == .doubleRightClick)
-        check("long press still starts a drag", legacy.action(for: .longPress) == .drag)
+        check("long press opens the desktop shortcut panel", legacy.action(for: .longPress) == .shortcutPanel)
         check("holding the second tap still starts a drag", legacy.action(for: .doubleTapHold) == .drag)
         check("new tap gestures do not surprise existing users", legacy.action(for: .twoFingerTap) == .none && legacy.action(for: .threeFingerTap) == .none)
         check("legacy pointer and natural scrolling defaults are preserved", legacy.action(for: .oneFingerMove) == .movePointer && legacy.action(for: .twoFingerMove) == .scroll && legacy.naturalScrolling)
@@ -68,6 +68,48 @@ struct GestureConfigurationTests {
         for gesture in [GestureID.oneFingerMove, .twoFingerMove] {
             check("movement actions are continuous for \(gesture.rawValue)", GestureConfiguration.allowedActions(for: gesture, target: .computer) == [.none, .movePointer, .scroll])
         }
+
+        let trackpadHabit = GestureConfiguration(preset: .trackpad)
+        check("trackpad preset keeps long press drag", trackpadHabit.action(for: .longPress) == .drag)
+        var panelEverywhere = GestureConfiguration()
+        panelEverywhere.setAction(.shortcutPanel, for: .threeFingerTap)
+        check("shortcut panel can be bound to a computer tap", panelEverywhere.action(for: .threeFingerTap) == .shortcutPanel)
+        panelEverywhere.setAction(.shortcutPanel, for: .oneFingerMove)
+        check("shortcut panel is never a continuous motion action", panelEverywhere.action(for: .oneFingerMove) == .none)
+        check("shortcut panel never leaks into TV gestures", GestureConfiguration(target: .television).sanitized(for: .television).action(for: .longPress) == .none &&
+              !GestureConfiguration.allowedActions(for: .longPress, target: .television).contains(.shortcutPanel))
+        let storedPanel = try decode(#"{"target":"television","bindings":{"longPress":"shortcutPanel"}}"#)
+        check("persisted TV shortcut panel binding is disabled", storedPanel.action(for: .longPress) == .none)
+
+        let macCopy = DesktopShortcut.copy.keystroke(macOS: true), winCopy = DesktopShortcut.copy.keystroke(macOS: false)
+        check("copy uses Command on a Mac and Ctrl elsewhere", macCopy == .init(key: "c", modifiers: ["win"]) && winCopy == .init(key: "c", modifiers: ["ctrl"]))
+        check("window switching uses Command+Tab and Alt+Tab", DesktopShortcut.switchWindow.keystroke(macOS: true) == .init(key: "tab", modifiers: ["win"]) &&
+              DesktopShortcut.switchWindow.keystroke(macOS: false) == .init(key: "tab", modifiers: ["alt"]))
+        let allowedKeys: Set<String> = ["enter", "tab", "escape", "backspace", "delete", "up", "down", "left", "right", "home", "end", "pageup", "pagedown", "space", "a", "c", "v", "x", "z"]
+        let allowedModifiers: Set<String> = ["ctrl", "alt", "shift", "win"]
+        check("every panel shortcut stays inside the receiver allow-list", DesktopShortcut.allCases.allSatisfy { shortcut in
+            [true, false].allSatisfy { mac in
+                let stroke = shortcut.keystroke(macOS: mac)
+                return allowedKeys.contains(stroke.key) && Set(stroke.modifiers).isSubset(of: allowedModifiers) && stroke.modifiers.count == Set(stroke.modifiers).count
+            }
+        })
+
+        var pick = ShortcutPanelSelection(count: 5, start: 1, x: 100, y: 100)
+        check("hold released in place keeps the panel open", pick.release == .keepOpen)
+        check("small slide does not change the item", !pick.move(x: 130, y: 104) && pick.index == 1 && pick.release == .keepOpen)
+        check("one step right highlights the next item", pick.move(x: 150, y: 104) && pick.index == 2)
+        check("lifting after choosing sends the highlighted item", pick.release == .send(2))
+        check("selection clamps at the last item", pick.move(x: 900, y: 100) && pick.index == 4 && !pick.move(x: 1200, y: 100))
+        check("selection clamps at the first item", pick.move(x: -900, y: 100) && pick.index == 0)
+        _ = pick.move(x: -900, y: 210)
+        check("vertical travel arms cancel", pick.cancelling && pick.release == .close)
+        _ = pick.move(x: -900, y: 120)
+        check("returning disarms cancel", !pick.cancelling && pick.release == .send(0))
+        var back = ShortcutPanelSelection(count: 5, start: 2, x: 0, y: 0)
+        _ = back.move(x: 60, y: 0); _ = back.move(x: 0, y: 0)
+        check("returning to the starting item still counts as a choice", back.index == 2 && back.release == .send(2))
+        var bad = ShortcutPanelSelection(count: 3, start: 9, x: 0, y: 0)
+        check("out of range start is clamped and non-finite moves ignored", bad.index == 2 && !bad.move(x: .nan, y: 0) && bad.release == .keepOpen)
 
         let partlyFuture = try decode(#"{"target":"computer","bindings":{"singleTap":"futureAction","threeFingerTap":"toggleDictation","unknownGesture":"rightClick","twoFingerTap":17},"naturalScrolling":false}"#)
         check("unknown future action is disabled without discarding other settings", partlyFuture.action(for: .singleTap) == .none && partlyFuture.action(for: .threeFingerTap) == .toggleDictation && !partlyFuture.naturalScrolling)

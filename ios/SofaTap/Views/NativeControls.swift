@@ -228,7 +228,18 @@ struct TouchSurface: UIViewRepresentable {
     let onDraggingChanged: (Bool) -> Void
     let onScroll: (Double) -> Void
     var onShortcut: (GestureAction) -> Void = { _ in }
+    /// Desktop shortcut panel events. A hold keeps its finger: the rest of that
+    /// contact only steers the panel and never reaches the computer as pointer input.
+    var onShortcutPanel: (ShortcutPanelEvent) -> Void = { _ in }
     var onInteractionBegan: () -> Void = {}
+
+    enum ShortcutPanelEvent: Equatable {
+        /// `tracking` is true when the opening finger is still down.
+        case open(tracking: Bool, x: Double, y: Double)
+        case move(x: Double, y: Double)
+        case lift
+        case cancel
+    }
 
     /// Overlay controls cancel the underlying pad synchronously before opening
     /// another UI. This also cancels deferred taps and releases an active drag.
@@ -261,6 +272,10 @@ struct TouchSurface: UIViewRepresentable {
         private lazy var effects = TouchParticleRenderer(in: layer)
         private var effectPoint = CGPoint.zero
         private var lastLiftPoint = CGPoint.zero
+        private weak var panelTouch: UITouch?
+        /// Touches are kept only for the current contact sequence.
+        private var liveTouches: [ObjectIdentifier: UITouch] = [:]
+        private var beginningContact = false
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -278,6 +293,7 @@ struct TouchSurface: UIViewRepresentable {
                 deadlineTimer = nil
                 contacts.removeAll()
                 contactOrigins.removeAll()
+                liveTouches.removeAll()
                 // Keep the previous callbacks installed until its button is released.
                 dispatch(state.cancel())
                 state = TouchGestureState(profile: parent.profile, configuration: configuration)
@@ -299,6 +315,7 @@ struct TouchSurface: UIViewRepresentable {
             ]
             if parent.profile == .desktop {
                 accessibilityCustomActions?.append(UIAccessibilityCustomAction(name: String(localized: "右键单击"), target: self, selector: #selector(accessibleRightClick)))
+                accessibilityCustomActions?.append(UIAccessibilityCustomAction(name: String(localized: "快捷键面板"), target: self, selector: #selector(accessibleShortcutPanel)))
             }
             isUserInteractionEnabled = parent.enabled && active
             effects.setInteractionFrameRate(parent.profile == .desktop ? (window?.screen.maximumFramesPerSecond ?? 60) : 60)
@@ -343,16 +360,23 @@ struct TouchSurface: UIViewRepresentable {
 #endif
         }
         func cancelInput() {
+            if panelTouch != nil {
+                panelTouch = nil
+                parent?.onShortcutPanel(.cancel)
+            }
             pointerMotion.reset()
             deadlineTimer?.invalidate()
             deadlineTimer = nil
             contacts.removeAll()
             contactOrigins.removeAll()
+            liveTouches.removeAll()
             dispatch(state.cancel())
             effects.clear()
         }
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard parent?.enabled == true, active else { return }
+            // While a hold steers the shortcut panel, extra fingers are ignored.
+            guard panelTouch == nil else { return }
             // Only the other overlay is cancelled. Contacts already on this
             // surface keep their normal two-finger gesture state.
             parent?.onInteractionBegan()
@@ -360,6 +384,7 @@ struct TouchSurface: UIViewRepresentable {
                 let id = ObjectIdentifier(touch), point = touch.location(in: self)
                 contacts[id] = point
                 contactOrigins[id] = point
+                liveTouches[id] = touch
             }
             effectPoint = CGPoint(x: centroid.x, y: centroid.y)
             pointerTimestamp = event?.timestamp ?? now
@@ -368,12 +393,21 @@ struct TouchSurface: UIViewRepresentable {
             PointerTiming.shared.resetPulse("touchInterval")
             PointerTiming.shared.count("contacts")
 #endif
+            beginningContact = true
             dispatch(state.begin(at: centroid, count: contacts.count, time: event?.timestamp ?? now, region: touchRegion))
+            beginningContact = false
             effects.beginContact(at: effectPoint)
             scheduleDeadline()
         }
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard parent?.enabled == true, active else { cancelInput(); return }
+            if let panelTouch {
+                if touches.contains(panelTouch) {
+                    let point = panelTouch.location(in: self)
+                    parent?.onShortcutPanel(.move(x: point.x, y: point.y))
+                }
+                return
+            }
             guard touches.contains(where: { contacts[ObjectIdentifier($0)] != nil }) else { return }
             for touch in touches where contacts[ObjectIdentifier(touch)] != nil {
                 let id = ObjectIdentifier(touch), point = touch.location(in: self)
@@ -396,6 +430,13 @@ struct TouchSurface: UIViewRepresentable {
         }
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard parent?.enabled == true, active else { cancelInput(); return }
+            if let panelTouch {
+                if touches.contains(panelTouch) {
+                    self.panelTouch = nil
+                    parent?.onShortcutPanel(.lift)
+                }
+                return
+            }
             // A control can cancel a contact while its finger is still down.
             // Its later UIKit end event must not end a new finger's gesture.
             guard touches.contains(where: { contacts[ObjectIdentifier($0)] != nil }) else { return }
@@ -417,6 +458,7 @@ struct TouchSurface: UIViewRepresentable {
                 let id = ObjectIdentifier(touch)
                 contacts.removeValue(forKey: id)
                 contactOrigins.removeValue(forKey: id)
+                liveTouches.removeValue(forKey: id)
             }
             dispatch(state.end(at: finalPoint, remainingCount: contacts.count, time: event?.timestamp ?? now, region: finalRegion,
                                remainingPoint: contacts.isEmpty ? nil : centroid))
@@ -425,6 +467,10 @@ struct TouchSurface: UIViewRepresentable {
             scheduleDeadline()
         }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            if let panelTouch {
+                if touches.contains(panelTouch) { cancelInput() }
+                return
+            }
             guard touches.contains(where: { contacts[ObjectIdentifier($0)] != nil }) else { return }
             cancelInput()
         }
@@ -474,6 +520,9 @@ struct TouchSurface: UIViewRepresentable {
                 case .scroll(let dy):
                     parent.onScroll(dy)
                     effects.moveTrail(to: effectPoint, scrolling: true)
+                case .shortcut(.shortcutPanel):
+                    guard parent.profile == .desktop else { continue }
+                    openShortcutPanel()
                 case .shortcut(let action):
                     parent.onShortcut(action)
                     effects.click(at: effectPoint, double: false)
@@ -484,6 +533,31 @@ struct TouchSurface: UIViewRepresentable {
             guard parent?.enabled == true, active else { return false }
             parent?.onLeftTap()
             effects.click(at: CGPoint(x: bounds.midX, y: bounds.midY), double: false)
+            return true
+        }
+        /// A hold hands its finger to the panel; a tap-bound panel opens for tapping.
+        private func openShortcutPanel() {
+            guard let parent else { return }
+            // A deferred tap flushed by a new contact must not capture that new finger.
+            let held = !beginningContact && contacts.count == 1 ? contacts.keys.first.flatMap { liveTouches[$0] } : nil
+            // Drop the gesture state first so the held finger cannot move the pointer,
+            // click on lift, or start a drag after the panel took it.
+            deadlineTimer?.invalidate(); deadlineTimer = nil
+            pointerMotion.reset()
+            contacts.removeAll(); contactOrigins.removeAll(); liveTouches.removeAll()
+            dispatch(state.cancel())
+            effects.clear()
+            if let held {
+                panelTouch = held
+                let point = held.location(in: self)
+                parent.onShortcutPanel(.open(tracking: true, x: point.x, y: point.y))
+            } else {
+                parent.onShortcutPanel(.open(tracking: false, x: bounds.midX, y: bounds.midY))
+            }
+        }
+        @objc private func accessibleShortcutPanel() -> Bool {
+            guard parent?.enabled == true, parent?.profile == .desktop, active, panelTouch == nil else { return false }
+            parent?.onShortcutPanel(.open(tracking: false, x: bounds.midX, y: bounds.midY))
             return true
         }
         @objc private func accessibleRightClick() -> Bool {
