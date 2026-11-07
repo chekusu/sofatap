@@ -24,7 +24,7 @@ struct DeviceGuideContextTests {
         let disconnected = DeviceGuideContext(kind: .androidTV, deviceName: "TV", connected: false, availableActions: fullTV)
         check("disconnected session cannot use stale capabilities as current proof", fullTV.allSatisfy { disconnected.availability(of: $0) == .unknown })
         let untrusted = DeviceGuideContext(kind: .androidTV, deviceName: "TV", connected: true, availableActions: Set(GestureAction.allCases))
-        check("desktop-only gestures remain unavailable even with overbroad reported capabilities", [.rightClick, .doubleLeftClick, .doubleRightClick, .drag, .toggleKeyboard, .toggleDictation].allSatisfy { untrusted.availability(of: $0) == .unsupported })
+        check("desktop-only gestures remain unavailable even with overbroad reported capabilities", [.rightClick, .doubleLeftClick, .doubleRightClick, .drag, .toggleKeyboard, .toggleDictation, .shortcutPanel].allSatisfy { untrusted.availability(of: $0) == .unsupported })
 
         var customized = GestureConfiguration(preset: .pressMenu, target: .television)
         customized.setAction(.back, for: .singleTap)

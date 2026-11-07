@@ -155,7 +155,7 @@ struct ConfigurableGestureTests {
         _ = pinch.begin(at: p, count: 2, time: 0)
         pinch.invalidateStationaryGestures()
         check("opposing individual finger motion cannot hide behind stable centroid", pinch.move(to: p, count: 2, time: 0.08).isEmpty && pinch.end(at: p, remainingCount: 0, time: 0.12).isEmpty)
-        var dragIndividualMotion = State()
+        var dragIndividualMotion = State(configuration: config([.longPress: .drag]))
         _ = dragIndividualMotion.begin(at: p, count: 1, time: 0)
         _ = dragIndividualMotion.advance(to: 0.3)
         dragIndividualMotion.invalidateStationaryGestures()
@@ -198,7 +198,7 @@ struct ConfigurableGestureTests {
         _ = cancelMulti.end(at: p, remainingCount: 1, time: 0.06, remainingPoint: p)
         check("cancelling partial lift clears pending multi tap", cancelMulti.cancel().isEmpty && cancelMulti.end(at: p, remainingCount: 0, time: 0.12).isEmpty)
 
-        var change = State()
+        var change = State(configuration: config([.longPress: .drag]))
         _ = change.begin(at: p, count: 1, time: 0)
         _ = change.advance(to: 0.3)
         check("configuration change releases old active drag", change.changeConfiguration(to: immediate) == [.dragging(false)] && !change.isDragging)
