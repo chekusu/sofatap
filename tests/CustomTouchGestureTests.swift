@@ -51,6 +51,14 @@ struct ConfigurableGestureTests {
         check("double tap hold differs from ordinary long press", hold.advance(to: 2.42) == [.dragging(true)])
         check("double tap hold releases once", hold.end(at: p, remainingCount: 0, time: 2.5) == [.dragging(false)] && hold.cancel().isEmpty)
 
+        var panelHold = State(configuration: config([.longPress: .shortcutPanel, .doubleTapHold: .drag]))
+        _ = panelHold.begin(at: p, count: 1, time: 0)
+        check("hold opens the shortcut panel once", panelHold.advance(to: 0.3) == [.shortcut(.shortcutPanel)] && !panelHold.isDragging)
+        check("panel hold lift never clicks", panelHold.end(at: p, remainingCount: 0, time: 0.8).isEmpty && panelHold.advance(to: 2).isEmpty)
+        var panelTap = State(configuration: config([.threeFingerTap: .shortcutPanel]))
+        _ = panelTap.begin(at: p, count: 3, time: 0)
+        check("three finger tap can open the shortcut panel", panelTap.end(at: p, remainingCount: 0, time: 0.1) == [.shortcut(.shortcutPanel)])
+
         var pairAsSingles = State(configuration: config([.leftDoubleTap: .none, .rightDoubleTap: .none,
                                                         .singleTap: .confirm, .doubleTapHold: .drag]))
         _ = tap(&pairAsSingles)
@@ -147,7 +155,7 @@ struct ConfigurableGestureTests {
         _ = pinch.begin(at: p, count: 2, time: 0)
         pinch.invalidateStationaryGestures()
         check("opposing individual finger motion cannot hide behind stable centroid", pinch.move(to: p, count: 2, time: 0.08).isEmpty && pinch.end(at: p, remainingCount: 0, time: 0.12).isEmpty)
-        var dragIndividualMotion = State()
+        var dragIndividualMotion = State(configuration: config([.longPress: .drag]))
         _ = dragIndividualMotion.begin(at: p, count: 1, time: 0)
         _ = dragIndividualMotion.advance(to: 0.3)
         dragIndividualMotion.invalidateStationaryGestures()
@@ -161,7 +169,7 @@ struct ConfigurableGestureTests {
         _ = lateMulti.begin(at: p, count: 2, time: 1.27)
         check("late arriving second finger cannot turn old contact into tap", lateMulti.end(at: p, remainingCount: 0, time: 1.3).isEmpty)
 
-        var transition = State(configuration: multi)
+        var transition = State(configuration: config([.twoFingerTap: .rightClick, .threeFingerTap: .toggleKeyboard, .longPress: .drag]))
         _ = transition.begin(at: p, count: 1, time: 0)
         _ = transition.advance(to: 0.3)
         check("second finger releases drag before changing semantics", transition.begin(at: p, count: 2, time: 0.31) == [.dragging(false)])
@@ -190,7 +198,7 @@ struct ConfigurableGestureTests {
         _ = cancelMulti.end(at: p, remainingCount: 1, time: 0.06, remainingPoint: p)
         check("cancelling partial lift clears pending multi tap", cancelMulti.cancel().isEmpty && cancelMulti.end(at: p, remainingCount: 0, time: 0.12).isEmpty)
 
-        var change = State()
+        var change = State(configuration: config([.longPress: .drag]))
         _ = change.begin(at: p, count: 1, time: 0)
         _ = change.advance(to: 0.3)
         check("configuration change releases old active drag", change.changeConfiguration(to: immediate) == [.dragging(false)] && !change.isDragging)

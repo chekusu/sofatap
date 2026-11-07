@@ -9,6 +9,9 @@ enum GestureID: String, Codable, CaseIterable {
 enum GestureAction: String, Codable, CaseIterable {
     case none, leftClick, rightClick, doubleLeftClick, doubleRightClick, drag
     case movePointer, scroll, confirm, back, home, toggleKeyboard, toggleDictation
+    /// Computer only: opens the desktop shortcut panel. When a hold opens it, the
+    /// same finger slides left or right to choose and lifts to send.
+    case shortcutPanel
 }
 
 enum GestureTarget: String, Codable, CaseIterable {
@@ -46,8 +49,8 @@ struct GestureConfiguration: Codable, Equatable {
         case (.computer, .sofatap):
             bindings[.leftDoubleTap] = .doubleLeftClick
             bindings[.rightDoubleTap] = .doubleRightClick
-            bindings[.longPress] = .drag
-            // Legacy Sofatap also starts dragging when the second tap is held.
+            bindings[.longPress] = .shortcutPanel
+            // Dragging starts when the second tap is held.
             bindings[.doubleTapHold] = .drag
         case (.computer, .trackpad):
             bindings[.leftDoubleTap] = .doubleLeftClick
@@ -108,7 +111,7 @@ struct GestureConfiguration: Codable, Equatable {
             }
             var actions: [GestureAction] = [.none, .leftClick, .rightClick, .doubleLeftClick, .doubleRightClick]
             if gesture == .longPress || gesture == .doubleTapHold { actions.append(.drag) }
-            actions += [.confirm, .back, .toggleKeyboard, .toggleDictation]
+            actions += [.confirm, .back, .toggleKeyboard, .toggleDictation, .shortcutPanel]
             return actions
         }
     }
@@ -219,5 +222,84 @@ struct GesturePreferences: Codable, Equatable {
         try container.encode(Self.schemaVersion, forKey: .schemaVersion)
         try container.encode(computer.sanitized(for: .computer), forKey: .computer)
         try container.encode(television.sanitized(for: .television), forKey: .television)
+    }
+}
+
+/// Keys the desktop shortcut panel offers. Every keystroke stays inside the
+/// receivers' existing key and modifier allow-list (see PROTOCOL.md).
+enum DesktopShortcut: String, CaseIterable, Codable {
+    case space, enter, escape, left, right, up, down, tab, copy, paste, undo, selectAll, switchWindow
+
+    struct Keystroke: Equatable {
+        let key: String
+        let modifiers: [String]
+    }
+
+    /// macOS receivers map `win` to Command; Windows and Linux use Ctrl and Alt.
+    func keystroke(macOS: Bool) -> Keystroke {
+        let command = macOS ? "win" : "ctrl"
+        switch self {
+        case .space: return Keystroke(key: "space", modifiers: [])
+        case .enter: return Keystroke(key: "enter", modifiers: [])
+        case .escape: return Keystroke(key: "escape", modifiers: [])
+        case .left: return Keystroke(key: "left", modifiers: [])
+        case .right: return Keystroke(key: "right", modifiers: [])
+        case .up: return Keystroke(key: "up", modifiers: [])
+        case .down: return Keystroke(key: "down", modifiers: [])
+        case .tab: return Keystroke(key: "tab", modifiers: [])
+        case .copy: return Keystroke(key: "c", modifiers: [command])
+        case .paste: return Keystroke(key: "v", modifiers: [command])
+        case .undo: return Keystroke(key: "z", modifiers: [command])
+        case .selectAll: return Keystroke(key: "a", modifiers: [command])
+        case .switchWindow: return Keystroke(key: "tab", modifiers: [macOS ? "win" : "alt"])
+        }
+    }
+}
+
+/// Pure selection state for a shortcut panel opened by a hold. Horizontal travel
+/// moves the highlight one item per step; vertical travel past the cancel distance
+/// arms cancellation. Lifting sends only after the finger chose an item, so a
+/// hold that is released in place leaves the panel open instead of sending.
+struct ShortcutPanelSelection: Equatable {
+    static let step = 48.0
+    static let cancelDistance = 96.0
+
+    let count: Int
+    private let start: Int
+    private let origin: (x: Double, y: Double)
+    private(set) var index: Int
+    private(set) var chose = false
+    private(set) var cancelling = false
+
+    init(count: Int, start: Int, x: Double, y: Double) {
+        self.count = max(1, count)
+        self.start = min(max(0, start), self.count - 1)
+        origin = (x, y)
+        index = self.start
+    }
+
+    /// Returns true when the highlighted item changed.
+    @discardableResult
+    mutating func move(x: Double, y: Double) -> Bool {
+        guard x.isFinite, y.isFinite else { return false }
+        cancelling = abs(y - origin.y) > Self.cancelDistance
+        let steps = Int(((x - origin.x) / Self.step).rounded(.towardZero))
+        let next = min(max(0, start + steps), count - 1)
+        if steps != 0 { chose = true }
+        guard next != index else { return false }
+        index = next
+        return true
+    }
+
+    enum Release: Equatable { case send(Int), keepOpen, close }
+
+    var release: Release {
+        if cancelling { return .close }
+        return chose ? .send(index) : .keepOpen
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.count == rhs.count && lhs.start == rhs.start && lhs.origin == rhs.origin &&
+            lhs.index == rhs.index && lhs.chose == rhs.chose && lhs.cancelling == rhs.cancelling
     }
 }

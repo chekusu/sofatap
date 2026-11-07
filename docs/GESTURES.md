@@ -8,8 +8,8 @@ Open the gear in the touchpad header. Choose a preset, then change individual ge
 
 | Preset | Computer behavior |
 | --- | --- |
-| Sofatap | Keeps the existing left/right double-tap regions, 300 ms hold to drag and natural two-finger scrolling. |
-| Trackpad habits | Double-tap either half for a left double-click; two-finger tap for a right click. |
+| Sofatap | Left/right double-tap regions, 300 ms long press for the shortcut panel, tap then hold to drag, and natural two-finger scrolling. |
+| Trackpad habits | Double-tap either half for a left double-click; two-finger tap for a right click; long press to drag. |
 | Press for shortcuts | Long press for a right click, tap then hold to drag, two-finger tap for Enter, three-finger tap to toggle the keyboard. |
 
 TV presets use pointer click, focus confirmation, Back and Home where supported. They never enable desktop-only right clicks, drag, keyboard or dictation. Android receiver capability reports limit selectable actions; previously saved unsupported actions stay visible as unavailable, and the controller still checks every request. A TV pointer click and focus confirmation are distinct actions.
@@ -19,6 +19,7 @@ TV presets use pointer click, focus confirmation, Back and Home where supported.
 Tap gestures include single tap, left-half double tap, right-half double tap, two-finger tap and three-finger tap. Hold gestures include a stationary long press and tap-then-hold. Slides include one-finger and two-finger movement.
 
 - Discrete gestures can trigger a supported click, double-click, Enter/confirmation, Escape/Back, keyboard toggle or dictation toggle. Home is TV-only. An action can also be unassigned.
+- On computers, any discrete gesture can open the **shortcut panel**. When a long press opens it, keep the finger down: slide left or right to highlight a key (one step about every 48 points) and lift to send it. Moving more than about 96 points up or down and lifting cancels. Lifting without sliding leaves the panel open, so it can be swiped and tapped; Done or a tap on the dimmed area closes it. While the panel owns the finger, it never moves the pointer, clicks or drags. The panel offers Space, Enter, Esc, the arrow keys, Tab, Copy, Paste, Undo, Select All and window switching (Command+Tab on a Mac, Alt+Tab elsewhere), all within the receivers' existing key allow-list. It remembers the last key sent. VoiceOver users open it from the touchpad's actions.
 - Only hold gestures can hold the mouse button for a drag. Lifting or cancelling releases it; there is no persistent drag lock.
 - On computers, one-finger pointer movement starts after 3 points, before a hold is ruled out. A hold is cancelled only when the finger leaves the 7-point stationary tolerance or is still sliding when the hold duration ends. A finger that rolls a few points while pressing and then rests for 100 ms keeps the hold.
 - Slides can move the pointer, scroll or do nothing. Natural scrolling applies to these slides. The strip inside the touchpad's right edge retains scrollbar direction.
@@ -30,6 +31,6 @@ The guide displays the current assignments. The practice sheet uses the producti
 
 ## Validation
 
-Run `bash ios/scripts/test-custom-gestures.sh` for configuration, persistence, capability and gesture conflict tests. The existing `TouchGestureTests.swift` checks continue to run against the default preset. UIKit editor, live text and drag-release recording-transport tests cover integration without desktop input.
+Run `bash ios/scripts/test-custom-gestures.sh` for configuration, persistence, capability and gesture conflict tests. `TouchGestureTests.swift` checks hold-to-drag timing with the long press bound to drag, since the default preset now opens the shortcut panel. UIKit editor, live text and drag-release recording-transport tests cover integration without desktop input.
 
 Seven physical settings and local-practice cases have passing results on a dedicated iPhone and an iPad in iPhone compatibility mode; see the [device results and limits](verification/custom-gestures-2026-10-16.md). These checks do not replace exact physical gesture timing, receiver input or household TV acceptance. Physical receiver tests must follow the Yomado isolation rules in `AGENTS.md`; the Sony and Xiaomi TV hardware acceptance remains tracked separately.
