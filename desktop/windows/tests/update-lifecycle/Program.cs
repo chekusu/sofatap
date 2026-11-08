@@ -169,10 +169,14 @@ try
             Check(!host.HasExited && string.Equals(host.MainModule?.FileName, Path.Combine(install, "SofaTapHost.exe"), StringComparison.OrdinalIgnoreCase), "Only the installed owned fixture host is running");
         await original.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
         Check(original.ExitCode == 0, "Original frontend exits after dispatching helper");
+        // A missing folder used to surface as DirectoryNotFoundException with no hint of what the updater did
+        // (main run 42482354445). Report the updater's own result instead.
+        var retained = Path.Combine(folder, (rollback ? ".Sofatap-failed-" : ".Sofatap-backup-") + id, "SofaTap.exe");
+        Check(File.Exists(retained), (rollback ? "Failed replacement" : "Old complete installation") + " not retained at " + retained + "; updater result: " + result);
         if (!rollback)
-            Check(Hash(Path.Combine(folder, ".Sofatap-backup-" + id, "SofaTap.exe")) == Hash(args[0]), "Old complete installation retained as backup");
+            Check(Hash(retained) == Hash(args[0]), "Old complete installation retained as backup");
         else
-            Check(Hash(Path.Combine(folder, ".Sofatap-failed-" + id, "SofaTap.exe")) == Hash(args[1]), "Failed replacement retained without overwriting original");
+            Check(Hash(retained) == Hash(args[1]), "Failed replacement retained without overwriting original");
         cases.Add(new { name, status = result.GetProperty("status").GetString(), frontend = rollback ? "0.8.0-beta.1" : "0.8.1-beta.1", inertBackend = true, profilePreserved = true });
         await StopOwnedAsync();
     }
