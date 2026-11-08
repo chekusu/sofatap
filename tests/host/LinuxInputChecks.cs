@@ -24,6 +24,11 @@ internal static class LinuxInputChecks
             var parsed = Protocol.Parse(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(LinuxInput.SerializeAction(action))));
             check(parsed.Type == action.Type && parsed.Text == action.Text, "Linux worker receives exact validated action fields");
         }
+        // Hosted Windows runners start Python and append files slowly (first launch is scanned), so a fixed
+        // 1.2 s status deadline failed there on one run and passed on the next with the same code. Warm Python
+        // once and give Windows a longer deadline; the 6 s lifecycle bounds below still hold.
+        var deadline = TimeSpan.FromMilliseconds(OperatingSystem.IsWindows() ? 3000 : 1200);
+        WarmPython();
         var root = Path.Combine(Path.GetTempPath(), "sofatap-worker-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
@@ -34,7 +39,7 @@ internal static class LinuxInputChecks
                 var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? "python" : "python3");
                 start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "fake_linux_worker.py"));
                 start.ArgumentList.Add(mode); start.ArgumentList.Add(audit);
-                using var input = new LinuxInput(start, TimeSpan.FromMilliseconds(1200));
+                using var input = new LinuxInput(start, deadline);
                 check(input.Available, "fake Linux worker handshake " + mode);
                 var session = new ActionSession(input);
                 var action = new ActionMessage(id, "text", Text: "safe-test-text");
@@ -59,7 +64,7 @@ internal static class LinuxInputChecks
                 var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? "python" : "python3");
                 start.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "fake_linux_worker.py"));
                 start.ArgumentList.Add(mode); start.ArgumentList.Add(audit);
-                using var input = new LinuxInput(start, TimeSpan.FromMilliseconds(1200));
+                using var input = new LinuxInput(start, deadline);
                 var watch = Stopwatch.StartNew();
                 // Force backpressure beyond ordinary pipe capacity without a
                 // real desktop. Never log or replay this synthetic payload.
@@ -74,5 +79,13 @@ internal static class LinuxInputChecks
             }
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    private static void WarmPython()
+    {
+        var start = new ProcessStartInfo(OperatingSystem.IsWindows() ? "python" : "python3") { UseShellExecute = false, CreateNoWindow = true };
+        foreach (var argument in new[] { "-c", "import json, os, sys, time" }) start.ArgumentList.Add(argument);
+        try { using var warm = Process.Start(start); warm?.WaitForExit(30_000); }
+        catch (System.ComponentModel.Win32Exception) { }
     }
 }
