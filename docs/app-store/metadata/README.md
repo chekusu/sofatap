@@ -3,6 +3,7 @@
 This is the canonical `asc metadata` directory for Sofatap iPhone/iPad. English (U.S.) is the primary locale.
 
 - `version/1.0/` is the metadata live with 1.0 (build 23), approved and released on October 31, 2026. Keep it as the record of that release.
+- `version/1.0.2/` (November 8, 2026) adds the long-press shortcut panel from #29 to What's New and updates the gesture sentence in every description: in the default preset a long press now opens the shortcut panel and drag is tap then hold. Other fields match the live 1.0.1. Screenshots and the App Preview for 1.0.2 were rebuilt from device captures and uploaded separately.
 - `version/1.0.1/` is staged for the next version (November 1, 2026). It carries the App Store keyword update, the pointer speed setting from #12 and the TV navigation changes on main. `app-info/` now holds the 1.0.1 names and subtitles.
 
 Since 1.0.1 the public name is **Sofatap** plus a short descriptor (for example "Sofatap: Remote for PC & TV"), so the name carries searchable category words. The app's on-device display name stays Sofatap. 1.0.1 adds two locales, **en-GB** and **es-MX**. English (U.K.) is the default store language in India, Indonesia and Saudi Arabia and an indexed second language in many other storefronts. Spanish (Mexico) serves Latin America. Sofatap is not distributed in the EU, so es-ES, de-DE and fr-FR reach few storefronts. Apple's [storefront language table](https://developer.apple.com/help/app-store-connect/reference/app-store-localizations) lists which locales each storefront uses.

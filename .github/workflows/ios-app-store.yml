@@ -17,7 +17,7 @@ on:
       review_notes:
         description: Reviewer notes file (used in submit mode)
         type: string
-        default: docs/app-store/app-store-1.0.1-24-review-notes.txt
+        default: docs/app-store/app-store-1.0.2-25-review-notes.txt
 
 permissions:
   contents: read
