@@ -1,0 +1,65 @@
+name: TestFlight
+
+# Every merge to main that touches the app: archive with Xcode cloud signing and upload to TestFlight, where the
+# internal testers get it. External testing and App Review stay manual.
+# The App Store Connect key comes from Hayabuild's secret store through GitHub OIDC (no GitHub Actions secrets):
+# register ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 and APPLE_TEAM_ID in the Hayabuild panel for this
+# repository, refs/heads/main and this workflow.
+# Build number: the project's CURRENT_PROJECT_VERSION, then the run number (18 → 18.1, 18.2 …), so it always rises
+# and a manual bump in the project still starts a higher series.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/testflight.yml', '.github/scripts/hayabuild-secrets.sh', '.github/TestFlightExportOptions.plist']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  HAYABUILD_API: https://stage-api.haya.build
+
+jobs:
+  testflight:
+    if: github.event_name != 'pull_request'
+    runs-on: [hayabuild-macos]
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Secrets from Hayabuild
+        run: .github/scripts/hayabuild-secrets.sh APPLE_TEAM_ID
+      - name: Build number
+        working-directory: ios
+        run: |
+          base=$(xcodebuild -project SofaTap.xcodeproj -scheme SofaTap -configuration Release -showBuildSettings 2>/dev/null \
+            | awk '$1 == "CURRENT_PROJECT_VERSION" { print $3; exit }')
+          [ -n "$base" ] || { echo "No CURRENT_PROJECT_VERSION in SofaTap.xcodeproj" >&2; exit 1; }
+          echo "BUILD_NUMBER=$base.${{ github.run_number }}" >> "$GITHUB_ENV"
+      - name: Archive
+        working-directory: ios
+        run: |
+          xcodebuild archive -project SofaTap.xcodeproj -scheme SofaTap -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            | tail -n 200
+          exit "${PIPESTATUS[0]}"
+      - name: Upload to TestFlight
+        run: |
+          cp .github/TestFlightExportOptions.plist "$RUNNER_TEMP/ExportOptions.plist"
+          plutil -replace teamID -string "$APPLE_TEAM_ID" "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/App.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Uploaded build $BUILD_NUMBER to TestFlight." >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
