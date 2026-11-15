@@ -1,0 +1,14 @@
+{
+  "preview": {
+    "scheme": "SofaTap", "project": "ios/SofaTap.xcodeproj", "paths": ["ios/SofaTap/**", "ios/SofaTap.xcodeproj/**", "hayabuild.json"],
+    "appearances": ["light", "dark"], "waitSeconds": 5,
+    "screens": [
+      {"name": "遥控", "args": ["--demo"], "paths": ["ios/SofaTap/Views/RemoteView.swift", "ios/SofaTap/Views/TouchParticleRenderer.swift", "ios/SofaTap/Views/EdgeScrollStrip.swift", "ios/SofaTap/Views/NativeControls.swift", "ios/SofaTap/Core/**", "ios/SofaTap/SofaTapApp.swift", "ios/SofaTap/Assets.xcassets/**", "hayabuild.json"]},
+      {"name": "配对", "paths": ["ios/SofaTap/Views/PairingView.swift", "ios/SofaTap/Views/PairingCameraView.swift", "hayabuild.json"]},
+      {"name": "添加设备", "args": ["--demo", "--demo-add-device"], "paths": ["ios/SofaTap/Views/AddDeviceView.swift", "ios/SofaTap/Views/TVPairingView.swift", "ios/SofaTap/Views/AndroidTVPairingView.swift", "hayabuild.json"]},
+      {"name": "电视遥控", "args": ["--demo", "--demo-tv-controls"], "paths": ["ios/SofaTap/Views/AndroidTVNavigationView.swift", "ios/SofaTap/Views/AndroidTVComposer.swift", "ios/SofaTap/Views/TVAuxiliaryPager.swift", "hayabuild.json"]},
+      {"name": "手势", "args": ["--demo", "--demo-gestures"], "paths": ["ios/SofaTap/Views/GestureSettingsView.swift", "ios/SofaTap/Views/GestureLabels.swift", "hayabuild.json"]},
+      {"name": "使用指南", "args": ["--demo", "--demo-guide"], "paths": ["ios/SofaTap/Views/RemoteGuideView.swift", "hayabuild.json"]}
+    ]
+  }
+}
