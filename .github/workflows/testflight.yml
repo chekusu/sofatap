@@ -1,11 +1,13 @@
 name: iOS App Store release
 
-# Manual only. Builds the iPhone/iPad app from the selected ref with cloud-managed signing,
+# Manual only, from main. Builds the iPhone/iPad app on a Hayabuild Mac with cloud-managed signing,
 # then (depending on `mode`) uploads it, syncs the App Store metadata, and submits for review.
+# TestFlight uploads of every merge are Hayabuild's own (release app sofatap, automatic releases on); this
+# workflow is only for the App Store submission, which needs Bruce's go-ahead.
 #
-# Required repository secrets:
-#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8  App Store Connect team API key (Admin role, for cloud signing)
-#   APPLE_TEAM_ID                         10-character Apple Developer team ID
+# No GitHub Actions secrets: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (App Store Connect API key, Admin role) and
+# APPLE_TEAM_ID come from Hayabuild's secret store through GitHub OIDC. They are kept for this repository,
+# refs/heads/main and .github/workflows/testflight.yml, which is why the file has this name.
 on:
   workflow_dispatch:
     inputs:
@@ -21,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write   # Hayabuild secrets
 
 concurrency:
   group: ios-app-store-release
@@ -28,28 +31,29 @@ concurrency:
 
 env:
   APP_ID: "6822188472"
+  HAYABUILD_API: https://api.haya.build
 
 jobs:
   release:
     name: Build, upload and submit (${{ inputs.mode }})
-    runs-on: macos-15
+    runs-on: hayabuild-macos
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: false
+
+      - name: Secrets from Hayabuild
+        run: sh .github/scripts/hayabuild-secrets.sh
 
       - name: Check secrets and read the version
         id: version
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           missing=""
           for name in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8 APPLE_TEAM_ID; do
             [ -n "${!name}" ] || missing="$missing $name"
           done
-          if [ -n "$missing" ]; then echo "::error::Missing repository secrets:$missing"; exit 1; fi
+          if [ -n "$missing" ]; then echo "::error::Hayabuild gave no:$missing (run from main; kept for refs/heads/main and this workflow)"; exit 1; fi
           version=$(sed -n 's/^ *MARKETING_VERSION: *"\{0,1\}\([0-9.]*\)"\{0,1\} *$/\1/p' ios/project.yml)
           build=$(sed -n 's/^ *CURRENT_PROJECT_VERSION: *"\{0,1\}\([0-9]*\)"\{0,1\} *$/\1/p' ios/project.yml)
           [ -n "$version" ] && [ -n "$build" ] || { echo "::error::Could not read the version from ios/project.yml"; exit 1; }
@@ -60,9 +64,6 @@ jobs:
           echo "Releasing $version ($build) from $GITHUB_SHA"
 
       - name: Install the API key
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
         run: |
           mkdir -p "$RUNNER_TEMP/asc"
           printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
@@ -76,24 +77,14 @@ jobs:
         run: python3 -m pip install 'PyJWT[crypto]==2.10.1'
 
       - name: Read-only metadata plan
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: >-
           python3 scripts/app_store_release.py --app "$APP_ID"
           --version "${{ steps.version.outputs.version }}" --build "${{ steps.version.outputs.build }}" --plan
 
-      - name: Select the newest installed Xcode
-        run: |
-          xcode=$(ls -d /Applications/Xcode_*.app | grep -v -i beta | sort -V | tail -1)
-          sudo xcode-select -s "$xcode/Contents/Developer"
-          xcodebuild -version
+      - name: Xcode
+        run: xcodebuild -version
 
       - name: Archive with cloud-managed signing
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild archive -project ios/SofaTap.xcodeproj -scheme SofaTap -configuration Release \
             -destination generic/platform=iOS -archivePath "$RUNNER_TEMP/SofaTap.xcarchive" \
@@ -103,9 +94,6 @@ jobs:
 
       - name: Export the App Store package (and upload unless check mode)
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MODE: ${{ inputs.mode }}
         run: |
           destination=upload
@@ -139,9 +127,6 @@ jobs:
 
       - name: Write metadata and attach the processed build
         if: inputs.mode != 'check'
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: >-
           python3 scripts/app_store_release.py --app "$APP_ID"
           --version "${{ steps.version.outputs.version }}" --build "${{ steps.version.outputs.build }}"
@@ -150,8 +135,6 @@ jobs:
       - name: Set reviewer notes and submit for App Review
         if: inputs.mode == 'submit'
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           NOTES: ${{ inputs.review_notes }}
         run: >-
           python3 scripts/app_store_release.py --app "$APP_ID"
