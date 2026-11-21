@@ -30,13 +30,16 @@ internal static class MacPermissionChecks
             var allAllowed = true;
             for (var i = 0; i < 10000; i++) allAllowed &= cache.IsAllowed;
             check(allAllowed, "cached movement permission remains available during native query");
-            check(watch.Elapsed < TimeSpan.FromMilliseconds(100), "10000 permission reads never wait on blocked native provider");
+            // The provider stays blocked until release.Set(), so a read that waited on it would
+            // never return. The bound only has to tell "returned" from "hung"; 100 ms flaked on
+            // loaded Windows runners (JIT/GC pauses), so allow a full second.
+            check(watch.Elapsed < TimeSpan.FromSeconds(1), "10000 permission reads never wait on blocked native provider");
             check(calls == 2, "hot-path reads cannot create more permission queries");
             Interlocked.Add(ref now, Stopwatch.Frequency);
             check(!cache.IsAllowed, "stale positive permission expires while native provider is stuck");
             watch.Restart();
             cache.Dispose();
-            check(watch.Elapsed < TimeSpan.FromMilliseconds(100) && !cache.IsAllowed, "disposal is bounded and fails closed");
+            check(watch.Elapsed < TimeSpan.FromSeconds(1) && !cache.IsAllowed, "disposal is bounded and fails closed");
         }
         finally { release.Set(); }
         check(finished.Wait(TimeSpan.FromSeconds(2)), "blocked provider exits when released");
