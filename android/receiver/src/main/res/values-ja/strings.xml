@@ -37,4 +37,7 @@
     <string name="accessibility_service_description">Sofatap は現在のウィンドウの操作項目の構造を読み取り、ポインターを表示します。ペアリング済みの iPhone から、あなたの操作に合わせてクリックやスクロールを行います。項目の文字を読み取ったり、自律的にタスクを実行したりすることはありません。パスワード欄や保護されたシステム画面は操作対象外です。このテレビを操作したい場合にのみ有効にしてください。いつでもここで無効にできます。</string>
     <string name="input_paused">テレビ操作を一時停止中</string>
     <string name="input_paused_help">テレビを起動してロックを解除し、iPhone を再接続してください。操作できない場合は Sofatap を再起動してください。</string>
+    <string name="settings_missing_title">このテレビでは設定が表示されません</string>
+    <string name="accessibility_settings_missing">このテレビのシステム設定には「ユーザー補助」画面がないため、リモコンで Sofatap を有効にできません。中国向けの一部のテレビやプロジェクターでは削除されています。テレビでネットワークデバッグ（ADB）を有効にし、同じネットワークのパソコンで adb connect テレビのIP:5555 を実行してから、次のコマンドを実行してください。すでに有効なほかのサービスは保持されます。</string>
+    <string name="ime_settings_missing">このテレビのシステム設定にはキーボード画面がないため、リモコンで Sofatap キーボードを有効にできません。テレビでネットワークデバッグ（ADB）を有効にし、同じネットワークのパソコンで adb connect テレビのIP:5555 を実行してから、次のコマンドを実行してください。2 つ目のコマンドで Sofatap が現在のキーボードになります。終わったらテレビのキーボード選択から戻せます。</string>
 </resources>

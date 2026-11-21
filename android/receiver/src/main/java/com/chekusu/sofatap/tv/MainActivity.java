@@ -61,8 +61,8 @@ public final class MainActivity extends Activity {
             AlertDialog disclosure = new AlertDialog.Builder(this).setTitle(R.string.permission_needed)
                 .setMessage(R.string.accessibility_service_description).setNegativeButton(android.R.string.cancel, null)
                 .setPositiveButton(R.string.enable_accessibility, (dialog, which) -> {
-                    try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
-                    catch (ActivityNotFoundException missing) { Toast.makeText(this, R.string.open_settings_manually, Toast.LENGTH_LONG).show(); }
+                    openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS, R.string.accessibility_settings_missing,
+                        () -> SettingsFallback.accessibilityCommands(Settings.Secure.getString(getContentResolver(), "enabled_accessibility_services")));
                 }).create();
             disclosure.show(); disclosure.getButton(AlertDialog.BUTTON_POSITIVE).setId(R.id.accessibility_setup);
         });
@@ -97,8 +97,7 @@ public final class MainActivity extends Activity {
         enableIme = button(R.string.ime_enable, () -> {
             new AlertDialog.Builder(this).setTitle(R.string.ime_enable).setMessage(R.string.ime_disclosure)
                 .setNegativeButton(android.R.string.cancel, null).setPositiveButton(R.string.ime_enable, (dialog, which) -> {
-                    try { startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)); }
-                    catch (ActivityNotFoundException missing) { Toast.makeText(this, R.string.open_settings_manually, Toast.LENGTH_LONG).show(); }
+                    openSettings(Settings.ACTION_INPUT_METHOD_SETTINGS, R.string.ime_settings_missing, SettingsFallback::inputMethodCommands);
                 }).show();
         }); padded(right, enableIme, 6);
         selectIme = button(R.string.ime_select, () -> getSystemService(android.view.inputmethod.InputMethodManager.class).showInputMethodPicker());
@@ -126,6 +125,23 @@ public final class MainActivity extends Activity {
         TextView updateHelp = text(14, Color.rgb(164, 189, 180)); updateHelp.setText(R.string.update_help); padded(right, updateHelp, 4);
         setContentView(root); renderQR(null); start.requestFocus();
         if (startup.runRequested() && ReceiverService.instance == null) ReceiverStartup.start(this);
+    }
+    /**
+     * Opens a system settings page, or explains on screen why it cannot. Vendor ROMs without
+     * the page (seen on an XGIMI projector) used to get only a brief toast the owner could not act on.
+     */
+    private void openSettings(String action, int missingMessage, java.util.function.Supplier<String> adbCommands) {
+        Intent intent = new Intent(action);
+        if (intent.resolveActivity(getPackageManager()) != null) {
+            try { startActivity(intent); return; } catch (ActivityNotFoundException | SecurityException ignored) { }
+        }
+        TextView body = text(15, INK); body.setTextIsSelectable(true);
+        body.setText(getString(missingMessage) + "\n\n" + adbCommands.get());
+        body.setPadding(dp(24), dp(12), dp(24), dp(4));
+        ScrollView holder = new ScrollView(this); holder.addView(body);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.settings_missing_title)
+            .setView(holder).setPositiveButton(android.R.string.ok, null).create();
+        dialog.show(); dialog.getButton(AlertDialog.BUTTON_POSITIVE).requestFocus();
     }
     private void refresh() {
         refreshUpdates();
