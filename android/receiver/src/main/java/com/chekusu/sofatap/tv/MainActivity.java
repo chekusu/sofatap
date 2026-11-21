@@ -131,10 +131,8 @@ public final class MainActivity extends Activity {
      * the page (seen on an XGIMI projector) used to get only a brief toast the owner could not act on.
      */
     private void openSettings(String action, int missingMessage, java.util.function.Supplier<String> adbCommands) {
-        Intent intent = new Intent(action);
-        if (intent.resolveActivity(getPackageManager()) != null) {
-            try { startActivity(intent); return; } catch (ActivityNotFoundException | SecurityException ignored) { }
-        }
+        // Launch directly: with package visibility, resolveActivity() can miss a page that opens fine.
+        try { startActivity(new Intent(action)); return; } catch (ActivityNotFoundException | SecurityException ignored) { }
         TextView body = text(15, INK); body.setTextIsSelectable(true);
         body.setText(getString(missingMessage) + "\n\n" + adbCommands.get());
         body.setPadding(dp(24), dp(12), dp(24), dp(4));
