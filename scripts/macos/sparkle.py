@@ -54,21 +54,46 @@ def inventory(framework):
     return result
 
 
+def links(root):
+    root = Path(root)
+    return {str(p.relative_to(root)): os.readlink(p) for p in sorted(root.rglob("*")) if p.is_symlink()}
+
+
+def cached(destination, config):
+    """True only when the cache matches the pinned archive file for file and link for link."""
+    try:
+        receipt = json.loads((destination / "SOFATAP-DEPENDENCY.json").read_text())
+        if receipt.get("archiveSHA256") != config["sparkleArchiveSHA256"] or "links" not in receipt:
+            return False
+        # Check code/tools before executing the cached release tooling.
+        for name, expected in receipt["files"].items():
+            path = destination / name
+            if path.is_symlink() or digest(path) != expected:
+                return False
+        if links(destination) != receipt["links"]:
+            return False
+        inventory(destination / "Sparkle.framework")
+        return True
+    except (OSError, ValueError, KeyError, RuntimeError):
+        return False
+
+
 def fetch(destination):
     config = json.loads(CONFIG.read_text())
     destination = Path(destination).resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with (destination.parent / (destination.name + ".lock")).open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if destination.exists():
-            receipt = json.loads((destination / "SOFATAP-DEPENDENCY.json").read_text())
-            if receipt.get("archiveSHA256") != config["sparkleArchiveSHA256"]:
-                raise ValueError("Cached Sparkle version differs from the pinned dependency")
-            # Check code/tools before executing the cached release tooling.
-            for name, expected in receipt["files"].items():
-                if digest(destination / name) != expected:
-                    raise ValueError("Cached Sparkle content changed; choose a new dependency directory")
-            return destination
+        if destination.exists() or destination.is_symlink():
+            if cached(destination, config):
+                return destination
+            # A persistent runner or an interrupted copy can leave a cache whose links
+            # loop or whose files changed. Never use it; replace it with a fresh,
+            # SHA-256 verified download.
+            if destination.is_symlink() or not destination.is_dir():
+                destination.unlink()
+            else:
+                shutil.rmtree(destination)
         with tempfile.TemporaryDirectory(dir=destination.parent, prefix="sparkle-") as temporary:
             temporary = Path(temporary)
             archive = temporary / "sparkle.tar.xz"
@@ -90,7 +115,8 @@ def fetch(destination):
             inventory(unpacked / "Sparkle.framework")
             files = {str(p.relative_to(unpacked)): digest(p) for p in unpacked.rglob("*") if p.is_file() and not p.is_symlink()}
             (unpacked / "SOFATAP-DEPENDENCY.json").write_text(json.dumps({
-                "version": config["sparkleVersion"], "archiveSHA256": config["sparkleArchiveSHA256"], "files": files
+                "version": config["sparkleVersion"], "archiveSHA256": config["sparkleArchiveSHA256"], "files": files,
+                "links": links(unpacked),
             }, indent=2) + "\n")
             os.replace(unpacked, destination)
     return destination
