@@ -37,4 +37,7 @@
     <string name="accessibility_service_description">Sofatap 会读取当前窗口的控件结构并显示光标，让已配对的 iPhone 按你的操作进行点击和滚动。它不会读取控件文字或自主执行任务，也不会操作密码和受保护的系统界面。仅在你希望控制这台电视时开启此权限；你可以随时在这里关闭。</string>
     <string name="input_paused">电视控制已暂停</string>
     <string name="input_paused_help">请唤醒并解锁电视，然后重新连接 iPhone。如果仍无法控制，请重新启动 Sofatap。</string>
+    <string name="settings_missing_title">这台电视隐藏了设置项</string>
+    <string name="accessibility_settings_missing">这台电视的系统设置里没有“无障碍”页面，无法用遥控器开启 Sofatap。部分国内电视和投影仪去掉了这个入口。请在电视上打开网络调试（ADB），在同一网络的电脑上执行 adb connect 电视IP:5555 后运行以下命令。命令会保留这台电视上已开启的其他服务。</string>
+    <string name="ime_settings_missing">这台电视的系统设置里没有键盘页面，无法用遥控器启用 Sofatap 键盘。请在电视上打开网络调试（ADB），在同一网络的电脑上执行 adb connect 电视IP:5555 后运行以下命令。第二条命令会把 Sofatap 设为当前键盘，用完后可在电视的键盘选择器里切回。</string>
 </resources>

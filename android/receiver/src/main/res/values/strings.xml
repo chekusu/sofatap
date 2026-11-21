@@ -37,4 +37,7 @@
     <string name="accessibility_service_description">Sofatap reads the current window’s control structure and draws a pointer so your paired iPhone can click and scroll at your direction. It does not read control text or perform autonomous tasks. Password and protected system screens are excluded. Enable this only if you want to control this TV, and disable it here at any time.</string>
     <string name="input_paused">TV control is paused</string>
     <string name="input_paused_help">Wake and unlock the TV, then reconnect your iPhone. If control stays unavailable, restart Sofatap.</string>
+    <string name="settings_missing_title">This TV hides its settings</string>
+    <string name="accessibility_settings_missing">This TV\'s system settings have no Accessibility page, so Sofatap cannot be enabled with the remote. Some TVs and projectors sold in China remove it. With network debugging (ADB) enabled on the TV, run these commands from a computer on the same network after adb connect TV_IP:5555. They keep the services already enabled on this TV.</string>
+    <string name="ime_settings_missing">This TV\'s system settings have no keyboard page, so the Sofatap keyboard cannot be enabled with the remote. With network debugging (ADB) enabled on the TV, run these commands from a computer on the same network after adb connect TV_IP:5555. The second command makes Sofatap the current keyboard; switch back from the TV\'s keyboard picker when you are done.</string>
 </resources>
