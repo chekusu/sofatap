@@ -19,6 +19,12 @@ internal sealed class PairingWindow : Form
     private ToolStripMenuItem? _checkUpdates;
     private ToolStripMenuItem? _automaticUpdates;
     private ToolStripMenuItem? _installUpdate;
+    private ToolStripMenuItem? _trayStatus;
+    private ToolStripMenuItem? _trayShow;
+    private ToolStripMenuItem? _trayCopy;
+    private ToolStripMenuItem? _trayStartup;
+    private bool _phoneConnected;
+    private readonly System.Windows.Forms.Timer _connectedRetreat = new() { Interval = 2500 };
     private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 60 * 60 * 1000 };
     private readonly CheckBox _startAtLogin = new()
     {
@@ -125,16 +131,26 @@ internal sealed class PairingWindow : Form
         {
             if (options.ManagesStartup)
             {
+                // The receiver lives in the notification area, like Tuwa Device: a native menu with
+                // the current state on top, and the pairing window only when a code is needed.
                 _trayMenu = new ContextMenuStrip();
-                _trayMenu.Items.Add("打开 Sofatap", null, (_, _) => ShowReceiver());
+                _trayStatus = new ToolStripMenuItem("正在准备配对") { Enabled = false };
+                _trayShow = new ToolStripMenuItem("显示配对二维码…", null, (_, _) => ShowReceiver()) { Font = new Font(_trayMenu.Font, FontStyle.Bold) };
+                _trayCopy = new ToolStripMenuItem("复制配对链接", null, (_, _) => CopyPairingLink()) { Enabled = false };
+                var trayRefresh = new ToolStripMenuItem("刷新", null, async (_, _) => await RefreshAsync());
+                _trayStartup = new ToolStripMenuItem("登录后启动", null, (_, _) => { if (_startAtLogin.Enabled) _startAtLogin.Checked = !_startAtLogin.Checked; });
                 _checkUpdates = new ToolStripMenuItem("检查更新…", null, async (_, _) => await CheckUpdatesAsync(manual: true));
                 _automaticUpdates = new ToolStripMenuItem("自动下载更新（下次打开时安装）") { CheckOnClick = true, Checked = true };
                 _automaticUpdates.Click += (_, _) => ChangeAutomaticUpdates();
                 _installUpdate = new ToolStripMenuItem("安装更新并重启…", null, (_, _) => InstallUpdate()) { Enabled = false };
-                _trayMenu.Items.AddRange([_checkUpdates, _automaticUpdates, _installUpdate, new ToolStripSeparator()]);
-                _trayMenu.Items.Add("退出", null, (_, _) => QuitReceiver());
-                _tray = new NotifyIcon { Icon = _brandIcon, Text = "Sofatap · 双击打开", ContextMenuStrip = _trayMenu, Visible = true };
-                _tray.DoubleClick += (_, _) => ShowReceiver();
+                _trayMenu.Items.AddRange([_trayStatus, new ToolStripSeparator(), _trayShow, _trayCopy, trayRefresh, new ToolStripSeparator(),
+                    _trayStartup, _checkUpdates, _automaticUpdates, _installUpdate, new ToolStripSeparator()]);
+                _trayMenu.Items.Add("退出 Sofatap", null, (_, _) => QuitReceiver());
+                _trayMenu.Opening += (_, _) => _trayStartup.Checked = _startAtLogin.Checked;
+                _tray = new NotifyIcon { Icon = _brandIcon, Text = "Sofatap", ContextMenuStrip = _trayMenu, Visible = true };
+                // A single left click opens the pairing window; the right click opens the menu.
+                _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowReceiver(); };
+                _connectedRetreat.Tick += (_, _) => { _connectedRetreat.Stop(); if (_phoneConnected && Visible && !_stopping) Hide(); };
             }
             if (options.Startup) { WindowState = FormWindowState.Minimized; ShowInTaskbar = false; }
             _backend.StateReceived += state => OnUi(() => ApplyState(state));
@@ -320,6 +336,16 @@ internal sealed class PairingWindow : Form
             _ => "请登录并解锁电脑桌面"
         };
         _status.IndicatorColor = state.Pairings.Length > 0 && !state.DryRun && state.InputStatus == "ready" ? MintCalm.Mint : MintCalm.Attention;
+        if (_tray is not null)
+        {
+            _trayStatus!.Text = state.Name + " · " + _status.Text;
+            _trayShow!.Text = state.Connected ? "配对新 iPhone…" : "显示配对二维码…";
+            var tip = "Sofatap · " + _status.Text;
+            _tray.Text = tip.Length > 120 ? tip[..120] : tip;
+            // Once a phone connects the window steps back to the notification area.
+            if (state.Connected && !_phoneConnected && Visible) _connectedRetreat.Start();
+        }
+        _phoneConnected = state.Connected;
         var selected = _addresses.SelectedItem as string;
         _updating = true;
         _pairings = state.Pairings;
@@ -333,6 +359,7 @@ internal sealed class PairingWindow : Form
         _updating = false;
         _refresh.Enabled = true;
         RenderQr();
+        if (_trayCopy is not null) _trayCopy.Enabled = _copy.Enabled;
         LayoutContents();
         if (!_receivedInitialState)
         {
@@ -407,6 +434,17 @@ internal sealed class PairingWindow : Form
         _status.Text = "接收端连接已中断";
         _status.IndicatorColor = MintCalm.Attention;
         ClearQr("请退出并重新打开接收器\n确认完整解压了 Sofatap 安装包");
+        // The tray is the main status surface while the window is hidden; it must not keep
+        // claiming a live connection, and a pending retreat must not hide this failure.
+        _connectedRetreat.Stop();
+        _phoneConnected = false;
+        if (_tray is not null)
+        {
+            _trayStatus!.Text = _status.Text;
+            _trayShow!.Text = "显示配对二维码…";
+            _trayCopy!.Enabled = false;
+            _tray.Text = "Sofatap · " + _status.Text;
+        }
         LayoutContents();
     }
 
@@ -624,7 +662,7 @@ internal sealed class PairingWindow : Form
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { _updateTimer.Dispose(); _updates?.Dispose(); _tray?.Dispose(); _trayMenu?.Dispose(); _startupHint.Dispose(); _copyFeedback.Dispose(); _backend.Dispose(); _brandIcon.Dispose(); }
+        if (disposing) { _connectedRetreat.Dispose(); _updateTimer.Dispose(); _updates?.Dispose(); _tray?.Dispose(); _trayMenu?.Dispose(); _startupHint.Dispose(); _copyFeedback.Dispose(); _backend.Dispose(); _brandIcon.Dispose(); }
         base.Dispose(disposing);
     }
 }
