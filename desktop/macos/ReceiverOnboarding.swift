@@ -336,9 +336,17 @@ private struct PanelQuietButton: ButtonStyle {
 /// ship no extensions.
 @MainActor
 final class ReceiverExtensionHost {
-    private struct Entry { let manifest: ReceiverExtensionManifest; let executable: URL; var process: Process?; var failures = 0; var startedAt = Date() }
+    private struct Entry {
+        let manifest: ReceiverExtensionManifest
+        let executable: URL
+        var process: Process?
+        var input: FileHandle?
+        var failures = 0
+        var startedAt = Date()
+    }
     private var entries: [Entry] = []
     private var stopping = false
+    private var link: ReceiverExtensionLink?
 
     let manifests: [ReceiverExtensionManifest]
 
@@ -367,6 +375,23 @@ final class ReceiverExtensionHost {
         for entry in entries where entry.process?.isRunning == true { entry.process?.terminate() }
     }
 
+    /// Hands the phone's device-link token to every helper that declared `wantsLink`, and
+    /// keeps it in memory to repeat after a restart. `nil` tells them the phone unpaired.
+    func setLink(_ newLink: ReceiverExtensionLink?) {
+        guard newLink != link else { return }
+        let hadLink = link != nil
+        link = newLink
+        for index in entries.indices where entries[index].manifest.wantsLink {
+            if let newLink { write(newLink.line, to: index) } else if hadLink { write(ReceiverExtensionLink.unlinkLine, to: index) }
+        }
+    }
+
+    private func write(_ data: Data, to index: Int) {
+        guard let input = entries[index].input else { return }
+        do { try input.write(contentsOf: data) }
+        catch { entries[index].process?.terminate() } // A helper that stops reading is restarted.
+    }
+
     private func launch(_ index: Int) {
         guard !stopping, entries[index].process?.isRunning != true else { return }
         let entry = entries[index]
@@ -378,7 +403,10 @@ final class ReceiverExtensionHost {
         environment["SOFATAP_EXTENSION_ID"] = entry.manifest.id
         environment["SOFATAP_RECEIVER_PID"] = String(ProcessInfo.processInfo.processIdentifier)
         process.environment = environment
-        process.standardInput = FileHandle.nullDevice
+        let pipe = entry.manifest.wantsLink ? Pipe() : nil
+        // Writing after the helper exits must throw EPIPE, not kill the receiver with SIGPIPE.
+        if let pipe, fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) == -1 { exited(id: entry.manifest.id); return }
+        process.standardInput = pipe ?? FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         let id = entry.manifest.id
@@ -389,6 +417,9 @@ final class ReceiverExtensionHost {
         do {
             try process.run()
             entries[index].process = process
+            entries[index].input = pipe?.fileHandleForWriting
+            try? pipe?.fileHandleForReading.close()
+            if let link { write(link.line, to: index) }
         } catch {
             exited(id: id)
         }
@@ -399,6 +430,8 @@ final class ReceiverExtensionHost {
         entries[index].failures = ReceiverExtensionBackoff.failures(previous: entries[index].failures,
                                                                     ranFor: Date().timeIntervalSince(entries[index].startedAt))
         entries[index].process = nil
+        try? entries[index].input?.close()
+        entries[index].input = nil
         let delay = ReceiverExtensionBackoff.delay(afterFailures: entries[index].failures)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, let i = self.entries.firstIndex(where: { $0.manifest.id == id }) else { return }

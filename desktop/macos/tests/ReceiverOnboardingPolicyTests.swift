@@ -42,6 +42,20 @@ enum ReceiverOnboardingPolicyTests {
             expect((try? ReceiverExtensionManifest.decode(Data(bad.utf8))) == nil, "Rejects unsafe manifest \(bad)")
         }
 
+        let linked = Data(#"{"id":"app.sofatap.agent","name":"Sofatap Agent","executable":"sofatap-agent","wantsLink":true}"#.utf8)
+        expect((try? ReceiverExtensionManifest.decode(linked))?.wantsLink == true, "wantsLink is read")
+        expect((try? ReceiverExtensionManifest.decode(json))?.wantsLink == false, "wantsLink defaults to false")
+        let token = "sbl_" + String(repeating: "ab", count: 32)
+        if let link = ReceiverExtensionLink(token: token, api: "https://api.sofatap.app", expiresAt: "2026-12-01T00:00:00Z") {
+            let object = try? JSONSerialization.jsonObject(with: link.line.dropLast()) as? [String: String]
+            expect(object == ["type": "link", "token": token, "api": "https://api.sofatap.app", "expiresAt": "2026-12-01T00:00:00Z"],
+                   "Link line carries the token, API and expiry")
+            expect(link.line.last == 0x0A && link.line.filter { $0 == 0x0A }.count == 1, "Link is exactly one line")
+        } else { expect(false, "Valid link is accepted") }
+        expect(ReceiverExtensionLink(token: "sbl_short", api: "https://api.sofatap.app", expiresAt: "x") == nil, "Short token is refused")
+        expect(ReceiverExtensionLink(token: token, api: "http://api.sofatap.app", expiresAt: "x") == nil, "Plain http API is refused")
+        expect(ReceiverExtensionLink(token: token.uppercased(), api: "https://api.sofatap.app", expiresAt: "x") == nil, "Token must be lowercase hex")
+
         expect(ReceiverExtensionBackoff.delay(afterFailures: 0) == 1, "First restart after one second")
         expect(ReceiverExtensionBackoff.delay(afterFailures: 10) == 60, "Restarts cap at a minute")
         expect(ReceiverExtensionBackoff.failures(previous: 3, ranFor: 120) == 0, "A long run resets the backoff")

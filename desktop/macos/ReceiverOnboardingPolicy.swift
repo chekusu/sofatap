@@ -52,13 +52,17 @@ struct ReceiverExtensionManifest: Decodable, Equatable, Sendable {
     var arguments: [String] = []
     var environment: [String: String] = [:]
     var permissions: [ReceiverPermission] = []
+    /// When true the receiver keeps the helper's stdin open and writes a ReceiverExtensionLink
+    /// line whenever the paired phone hands over a device-link token, and after each restart.
+    var wantsLink = false
 
-    enum CodingKeys: String, CodingKey { case id, name, executable, arguments, environment, permissions }
+    enum CodingKeys: String, CodingKey { case id, name, executable, arguments, environment, permissions, wantsLink }
 
     init(id: String, name: String, executable: String, arguments: [String] = [],
-         environment: [String: String] = [:], permissions: [ReceiverPermission] = []) {
+         environment: [String: String] = [:], permissions: [ReceiverPermission] = [], wantsLink: Bool = false) {
         self.id = id; self.name = name; self.executable = executable
         self.arguments = arguments; self.environment = environment; self.permissions = permissions
+        self.wantsLink = wantsLink
     }
 
     init(from decoder: Decoder) throws {
@@ -71,6 +75,7 @@ struct ReceiverExtensionManifest: Decodable, Equatable, Sendable {
         // Unknown permission names are ignored so an older receiver can still start a newer helper.
         let names = try c.decodeIfPresent([String].self, forKey: .permissions) ?? []
         permissions = names.compactMap(ReceiverPermission.init(rawValue:))
+        wantsLink = try c.decodeIfPresent(Bool.self, forKey: .wantsLink) ?? false
     }
 
     /// Only a plain file name inside the extension's own folder, and a reverse-DNS-like id.
@@ -91,6 +96,34 @@ struct ReceiverExtensionManifest: Decodable, Equatable, Sendable {
         try manifest.validate()
         return manifest
     }
+}
+
+/// The device-link token the paired phone made for this receiver, forwarded to helpers that
+/// ask for it. Held in memory only: never written to disk, environment or arguments.
+struct ReceiverExtensionLink: Equatable, Sendable {
+    let token: String
+    let api: String
+    let expiresAt: String
+
+    /// Spec 14.2: `sbl_` plus 64 lowercase hex characters, an https API origin, a short date.
+    init?(token: String, api: String, expiresAt: String) {
+        let hex = CharacterSet(charactersIn: "0123456789abcdef")
+        guard token.hasPrefix("sbl_"), token.count == 68,
+              token.dropFirst(4).unicodeScalars.allSatisfy(hex.contains),
+              let url = URL(string: api), url.scheme == "https", url.host != nil, api.count <= 256,
+              !expiresAt.isEmpty, expiresAt.count <= 64 else { return nil }
+        self.token = token; self.api = api; self.expiresAt = expiresAt
+    }
+
+    /// One JSON line for the helper's stdin.
+    var line: Data {
+        let object: [String: String] = ["type": "link", "token": token, "api": api, "expiresAt": expiresAt]
+        var data = (try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])) ?? Data()
+        data.append(0x0A)
+        return data
+    }
+
+    static let unlinkLine = Data(#"{"type":"unlink"}"#.utf8) + Data([0x0A])
 }
 
 enum ReceiverExtensionError: Error, Equatable {

@@ -141,3 +141,5 @@ Paid builds can add helpers without changing this repository. A helper is declar
 ```
 
 The executable is a plain file name inside `Contents/Helpers/`, so codesign seals it with the app. The receiver starts it as a direct child process (never through `open` or Launch Services), so macOS attributes its privacy grants to Sofatap, and restarts it with backoff (1 s doubling to 60 s) when it exits. It receives `SOFATAP_EXTENSION_ID` and `SOFATAP_RECEIVER_PID`; `DYLD_*` variables are stripped and refused in manifests. Declared permissions join the first-run guide. Open source builds ship no extensions, and dry-run and test-display launches never start them.
+
+A manifest with `"wantsLink": true` gets a stdin pipe that stays open. When the paired phone hands the receiver a device-link token, the receiver writes one line, `{"api":"https://…","expiresAt":"…","token":"sbl_…","type":"link"}`, and repeats it after every restart; when the phone unpairs it writes `{"type":"unlink"}`. The token is held in memory only. `ReceiverExtensionHost.setLink(_:)` is the entry point; the phone-to-receiver message that carries the token is added with the paid phone package.
