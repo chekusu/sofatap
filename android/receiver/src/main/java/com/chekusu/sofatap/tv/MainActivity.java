@@ -372,6 +372,7 @@ public final class MainActivity extends Activity {
         String uri = receiver == null ? null : receiver.pairingUri(address);
         boolean qrChanged = !Objects.equals(uri, renderedURI);
         if (qrChanged) { renderedURI = uri; renderQR(uri); }
+        boolean wasConnected = connected;
         connected = server != null && server.connected();
         if (receiver == null) {
             status.setText(startup.blocked() ? R.string.cannot_start : R.string.stopped);
@@ -393,7 +394,8 @@ public final class MainActivity extends Activity {
         capabilities.setText(R.string.probe_limitations);
         inputs.set(receiver != null, server != null, receiver != null && receiver.error != null, uri != null, connected, needsPermission);
         boolean wasOnboarded = flow.onboarded();
-        if (flow.update(inputs, now()) || qrChanged) render();
+        // IDLE's title, body and pill depend on the connection, so a reconnect must redraw it too.
+        if (flow.update(inputs, now()) || qrChanged || connected != wasConnected) render();
         if (!wasOnboarded && flow.onboarded()) saveOnboarded();
     }
 

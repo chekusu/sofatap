@@ -65,12 +65,16 @@ public final class OnboardingFlow {
                 if (in.needsPermission) return permissionDeferred ? Stage.IDLE : Stage.PERMISSION;
                 return onboarded ? Stage.IDLE : Stage.GUIDE_MOVE;
             case GUIDE_MOVE:
+                // The phone left (or New pairing revoked it): show the code again instead of the guide.
+                if (!in.connected) return lostPhone(in);
                 if (in.needsPermission) return Stage.PERMISSION;
                 return age >= GUIDE_TIMEOUT_MS ? Stage.GUIDE_TAP : Stage.GUIDE_MOVE;
             case GUIDE_TAP:
+                if (!in.connected) return lostPhone(in);
                 if (in.needsPermission) return Stage.PERMISSION;
                 return age >= GUIDE_TIMEOUT_MS ? Stage.SCREENS : Stage.GUIDE_TAP;
             case SCREENS:
+                if (!in.connected) return lostPhone(in);
                 return age >= SCREENS_MS ? finish() : Stage.SCREENS;
             case IDLE:
             default:
@@ -91,6 +95,8 @@ public final class OnboardingFlow {
         if (in.connected && !onboarded) return Stage.GUIDE_MOVE;
         return Stage.IDLE;
     }
+
+    private Stage lostPhone(Inputs in) { return in.qrAvailable ? Stage.READY : Stage.IDLE; }
 
     private Stage finish() { onboarded = true; return Stage.IDLE; }
 

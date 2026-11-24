@@ -98,4 +98,14 @@ public class OnboardingFlowTest {
         assertTrue(flow.skipGuide(OnboardingFlow.CONNECTED_MS + OnboardingFlow.GUIDE_TIMEOUT_MS + 1));
         assertEquals(Stage.IDLE, flow.stage());
     }
+
+    @Test public void revokedPhoneDuringGuideShowsTheNewCode() {
+        OnboardingFlow flow = new OnboardingFlow(false);
+        flow.update(in(false, true, false), 0);
+        flow.update(in(false, true, false), OnboardingFlow.CONNECTED_MS);
+        assertEquals(Stage.GUIDE_MOVE, flow.stage());
+        flow.update(in(true, false, false), OnboardingFlow.CONNECTED_MS + 10);
+        assertEquals("New pairing during the guide shows the fresh code at once", Stage.READY, flow.stage());
+        assertFalse("the guide plays again for the next phone", flow.onboarded());
+    }
 }
