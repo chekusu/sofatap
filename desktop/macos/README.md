@@ -122,3 +122,22 @@ Add `-D SOFATAP_MAC_APP_STORE` to the offscreen appearance-fixture command to in
 Website builds use Sparkle for native **检查更新…** and default-on **自动检查并下载更新** in the Sofatap application menu. Automatic downloads install when the receiver quits; an active phone connection is not forcibly interrupted. A user-requested relaunch waits until the phone disconnects. The opt-out persists across launches. Mac App Store builds use Apple's managed updates and open the App Store Updates page, with no external updater bundled.
 
 Packaging, architecture-specific signed feeds, release verification, and the one-time upgrade needed by older receivers are documented in [the macOS update release guide](../../scripts/macos/UPDATES.md). Dry-run/fixture/test-display launches do not start the updater or modify its preferences.
+
+## Menu bar, first-run guide and extensions
+
+The receiver runs as a menu bar app with no Dock icon. `ReceiverStatusMenu.swift` builds a native `NSMenu`: state at the top, then the pairing code, connection address, copy link, refresh, launch at login, updates and Quit. `ReceiverOnboarding.swift` is the small panel the menu opens. On first launch it shows an introduction, then one page per missing permission (Accessibility first, then whatever an installed extension declares), then the pairing code over an animated dot field. A revoked permission brings its page back on the next launch. `ReceiverOnboardingPolicy.swift` holds the page order and is tested without AppKit.
+
+Paid builds can add helpers without changing this repository. A helper is declared by `Contents/Resources/Extensions/<id>.json`:
+
+```json
+{
+  "id": "app.sofatap.agent",
+  "name": "Sofatap Agent",
+  "executable": "SofatapAgent",
+  "arguments": ["serve", "--embedded"],
+  "environment": { "CUA_DRIVER_EMBEDDED": "1" },
+  "permissions": ["accessibility", "screenRecording"]
+}
+```
+
+The executable is a plain file name inside `Contents/Helpers/`, so codesign seals it with the app. The receiver starts it as a direct child process (never through `open` or Launch Services), so macOS attributes its privacy grants to Sofatap, and restarts it with backoff (1 s doubling to 60 s) when it exits. It receives `SOFATAP_EXTENSION_ID` and `SOFATAP_RECEIVER_PID`; `DYLD_*` variables are stripped and refused in manifests. Declared permissions join the first-run guide. Open source builds ship no extensions, and dry-run and test-display launches never start them.
