@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreServices
 import ImageIO
 import SwiftUI
@@ -18,12 +19,9 @@ enum SofaTapLauncher {
         }
         let delegate = LauncherDelegate(options: options)
         application.delegate = delegate
-        if options.testDisplayID != nil {
-            guard application.setActivationPolicy(.accessory) else {
-                failLaunch(ReceiverLaunchError.displayUnavailable)
-            }
-        } else {
-            application.setActivationPolicy(.regular)
+        // The receiver lives in the menu bar; it has no Dock icon in either mode.
+        guard application.setActivationPolicy(.accessory) || options.testDisplayID == nil else {
+            failLaunch(ReceiverLaunchError.displayUnavailable)
         }
         withExtendedLifetime(delegate) { application.run() }
     }
@@ -44,6 +42,10 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private let loginItem: ReceiverLoginItem
     private var window: NSWindow?
     private var isTerminating = false
+    private var statusMenu: ReceiverStatusMenu?
+    private var onboarding: ReceiverOnboarding?
+    private var extensions: ReceiverExtensionHost?
+    private var linkObservation: AnyCancellable?
 
     init(options: ReceiverLaunchOptions) {
         self.options = options
@@ -64,63 +66,119 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "关于 Sofatap", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        updater.addMenuItems(to: appMenu)
-        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "隐藏 Sofatap", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(withTitle: "退出 Sofatap", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = appMenu
         mainMenu.addItem(appItem)
         NSApp.mainMenu = mainMenu
 
-        let window: NSWindow
-        if testFrame != nil {
-            let panel = ReceiverTestPanel(contentRect: NSRect(x: 0, y: 0, width: 470, height: 700),
-                styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
-            panel.isFloatingPanel = false
-            panel.level = .normal
-            panel.hidesOnDeactivate = false
-            panel.isMovable = false
-            panel.animationBehavior = .none
-            window = panel
-        } else {
-            window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 470, height: 700),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "文件")
+        fileMenu.addItem(withTitle: "关闭", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        if let testFrame {
+            showTestWindow(frame: testFrame)
+            receiver.start()
+            return
         }
+
+        let dryRun = CommandLine.arguments.contains("--dry-run")
+        let host = ReceiverExtensionHost()
+        let onboarding = ReceiverOnboarding(receiver: receiver, extensions: dryRun ? [] : host.manifests)
+        onboarding.onFinished = { [weak self] in
+            // Leave "iPhone 已连接" on screen for a moment, then retreat to the menu bar.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { self?.window?.performClose(nil) }
+        }
+        self.onboarding = onboarding
+        self.extensions = dryRun ? nil : host
+        statusMenu = ReceiverStatusMenu(receiver: receiver, loginItem: loginItem, updater: updater) { [weak self] in
+            self?.showPanel()
+        }
+
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
+            styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "Sofatap"
         window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isMovableByWindowBackground = true
         window.backgroundColor = NSColor(red: 17 / 255, green: 25 / 255, blue: 27 / 255, alpha: 1)
-        window.contentMinSize = NSSize(width: 380, height: 440)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        window.contentView = NSHostingView(rootView: ReceiverView(receiver: receiver, loginItem: loginItem))
+        window.contentView = NSHostingView(rootView: ReceiverPanelView(onboarding: onboarding, receiver: receiver) { [weak window] in
+            window?.performClose(nil)
+        })
+        window.center()
         self.window = window
-        if let testFrame {
-            window.setFrame(testFrame, display: false)
-            window.orderFrontRegardless()
-            NotificationCenter.default.addObserver(self, selector: #selector(testDisplayChanged),
-                name: NSApplication.didChangeScreenParametersNotification, object: nil)
-        } else {
-            window.center()
-            // Login items should prepare the receiver without stealing focus or
-            // opening a pairing window over the user's restored applications.
-            let launchEvent = NSAppleEventManager.shared().currentAppleEvent
-            let launchedAtLogin = launchEvent?.eventID == kAEOpenApplication
-                && launchEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
-            if !launchedAtLogin {
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-            }
-        }
+
         receiver.start()
+        extensions?.startAll()
+        if extensions != nil {
+            // Forward the phone's device-link token; a helper restart (state == nil) is not an unlink.
+            linkObservation = receiver.$state.compactMap { $0 }.removeDuplicates { $0.deviceLink == $1.deviceLink }
+                .sink { [weak self] state in
+                    let link = state.deviceLink.flatMap { ReceiverExtensionLink(token: $0.token, api: $0.api, expiresAt: $0.expiresAt) }
+                    self?.extensions?.setLink(link)
+                }
+        }
+        // The store build waits for explicit consent: the menu's 登录时启动 item gives it.
         loginItem.configureFirstLaunch()
         updater.start()
+
+        // Login items should prepare the receiver without stealing focus. They only open
+        // the guide when a permission is missing; a manual launch always shows the panel.
+        let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+        let launchedAtLogin = launchEvent?.eventID == kAEOpenApplication
+            && launchEvent?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
+        if !launchedAtLogin {
+            showPanel()
+        } else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+                guard let self, let onboarding = self.onboarding else { return }
+                onboarding.update()
+                if case .permission = onboarding.step { self.showPanel() }
+            }
+        }
+    }
+
+    private func showPanel() {
+        guard let window, !isTerminating else { return }
+        onboarding?.update()
+        onboarding?.setWatching(true)
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Camera and transport QA keeps the full-size, nonactivating receiver window.
+    private func showTestWindow(frame: NSRect) {
+        let panel = ReceiverTestPanel(contentRect: NSRect(x: 0, y: 0, width: 470, height: 700),
+            styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel.isFloatingPanel = false
+        panel.level = .normal
+        panel.hidesOnDeactivate = false
+        panel.isMovable = false
+        panel.animationBehavior = .none
+        panel.title = "Sofatap"
+        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.titlebarAppearsTransparent = true
+        panel.backgroundColor = NSColor(red: 17 / 255, green: 25 / 255, blue: 27 / 255, alpha: 1)
+        panel.contentMinSize = NSSize(width: 380, height: 440)
+        panel.isReleasedWhenClosed = false
+        panel.delegate = self
+        panel.contentView = NSHostingView(rootView: ReceiverView(receiver: receiver, loginItem: loginItem))
+        window = panel
+        panel.setFrame(frame, display: false)
+        panel.orderFrontRegardless()
+        NotificationCenter.default.addObserver(self, selector: #selector(testDisplayChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             if options.testDisplayID != nil { testDisplayChanged() }
-            else { window?.makeKeyAndOrderFront(nil) }
+            else { showPanel() }
         }
         return true
     }
@@ -143,11 +201,12 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        if options.testDisplayID != nil || CommandLine.arguments.contains("--dry-run") {
+        if options.testDisplayID != nil {
             NSApp.terminate(nil)
         } else {
-            // Closing the pairing window must not disconnect a paired phone.
-            // Dock reopening restores it; the native Quit command stops the app.
+            // Closing the panel must not disconnect a paired phone. Sofatap stays in the
+            // menu bar; its Quit item stops the receiver.
+            onboarding?.setWatching(false)
             sender.orderOut(nil)
         }
         return false
@@ -157,12 +216,13 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         isTerminating = true
+        extensions?.stopAll()
         receiver.stop { [weak self] stopped in
             // Reply on the next main-loop turn, after AppKit receives terminateLater.
             DispatchQueue.main.async {
                 sender.reply(toApplicationShouldTerminate: stopped)
-                if !stopped { self?.isTerminating = false }
-                if !stopped, self?.options.testDisplayID == nil { self?.window?.makeKeyAndOrderFront(nil) }
+                if !stopped { self?.isTerminating = false; self?.extensions?.startAll() }
+                if !stopped, self?.options.testDisplayID == nil { self?.showPanel() }
             }
         }
         return .terminateLater

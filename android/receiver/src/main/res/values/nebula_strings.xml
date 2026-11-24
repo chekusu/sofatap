@@ -1,0 +1,37 @@
+<resources>
+    <string name="nebula_brand">Sofatap · This TV</string>
+    <string name="nebula_ready_title">Pick up your iPhone and scan</string>
+    <string name="nebula_ready_body">Open Sofatap, tap ＋ and scan this code. Keep your iPhone and TV on the same Wi‑Fi.</string>
+    <string name="nebula_permission_kicker">Before you pair</string>
+    <string name="nebula_permission_kicker_late">One last step</string>
+    <string name="nebula_permission_title">Allow Sofatap to control this TV</string>
+    <string name="nebula_permission_body">Turn on Sofatap in Accessibility settings so the pointer can appear. You can turn it off at any time.</string>
+    <string name="nebula_later">Later</string>
+    <string name="nebula_linking_kicker">Pairing</string>
+    <string name="nebula_linking_title">Found you</string>
+    <string name="nebula_linking_body">Setting up an encrypted connection…</string>
+    <string name="nebula_connected_kicker">Paired securely</string>
+    <string name="nebula_connected_title">Your iPhone is connected</string>
+    <string name="nebula_connected_body">Next time, open Sofatap and it reconnects to this TV on its own.</string>
+    <string name="nebula_move_kicker">Try it · 1 / 2</string>
+    <string name="nebula_move_title">Slide on your iPhone</string>
+    <string name="nebula_move_body">The pointer follows your finger.</string>
+    <string name="nebula_tap_kicker">Try it · 2 / 2</string>
+    <string name="nebula_tap_title">Tap to click</string>
+    <string name="nebula_tap_body">Slide two fingers up or down to scroll.</string>
+    <string name="nebula_skip">Skip guide</string>
+    <string name="nebula_screens_kicker">More than this TV</string>
+    <string name="nebula_screens_title">One iPhone for every screen at home</string>
+    <string name="nebula_screens_body">Install the Sofatap receiver on a Mac, Windows or Linux computer and scan once to add it.</string>
+    <string name="nebula_done">Done</string>
+    <string name="nebula_idle_title">Ready</string>
+    <string name="nebula_idle_body">Open Sofatap on your iPhone to control this TV.</string>
+    <string name="nebula_idle_connected_body">Your iPhone is connected. Slide to move the pointer.</string>
+    <string name="nebula_settings">Settings</string>
+    <string name="nebula_settings_back">Back</string>
+    <string name="nebula_your_iphone">Your iPhone</string>
+    <string name="nebula_label_mac">MacBook</string>
+    <string name="nebula_label_tv">This TV</string>
+    <string name="nebula_label_pc">PC</string>
+    <string name="nebula_meta">%1$s · %2$s</string>
+</resources>

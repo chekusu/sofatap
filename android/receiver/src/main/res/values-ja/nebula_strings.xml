@@ -1,0 +1,37 @@
+<resources>
+    <string name="nebula_brand">Sofatap · このテレビ</string>
+    <string name="nebula_ready_title">iPhone でスキャン</string>
+    <string name="nebula_ready_body">Sofatap を開いて ＋ をタップし、このコードを読み取ります。iPhone とテレビは同じ Wi‑Fi に接続してください。</string>
+    <string name="nebula_permission_kicker">ペアリングの前に</string>
+    <string name="nebula_permission_kicker_late">最後のステップ</string>
+    <string name="nebula_permission_title">Sofatap にテレビの操作を許可</string>
+    <string name="nebula_permission_body">ユーザー補助の設定で Sofatap をオンにすると、ポインタが表示されます。いつでもオフにできます。</string>
+    <string name="nebula_later">あとで</string>
+    <string name="nebula_linking_kicker">ペアリング中</string>
+    <string name="nebula_linking_title">見つかりました</string>
+    <string name="nebula_linking_body">暗号化された接続を準備しています…</string>
+    <string name="nebula_connected_kicker">安全にペアリングしました</string>
+    <string name="nebula_connected_title">iPhone が接続されました</string>
+    <string name="nebula_connected_body">次からは Sofatap を開くだけで、このテレビに自動で接続します。</string>
+    <string name="nebula_move_kicker">試してみよう · 1 / 2</string>
+    <string name="nebula_move_title">iPhone の上で指をスライド</string>
+    <string name="nebula_move_body">ポインタが指の動きについてきます。</string>
+    <string name="nebula_tap_kicker">試してみよう · 2 / 2</string>
+    <string name="nebula_tap_title">タップでクリック</string>
+    <string name="nebula_tap_body">2 本指で上下にスライドするとスクロールします。</string>
+    <string name="nebula_skip">ガイドをスキップ</string>
+    <string name="nebula_screens_kicker">このテレビだけじゃない</string>
+    <string name="nebula_screens_title">1 台の iPhone で家じゅうの画面を</string>
+    <string name="nebula_screens_body">Mac、Windows、Linux のパソコンに Sofatap レシーバーを入れて、一度スキャンするだけで追加できます。</string>
+    <string name="nebula_done">完了</string>
+    <string name="nebula_idle_title">準備完了</string>
+    <string name="nebula_idle_body">iPhone の Sofatap を開くと、このテレビを操作できます。</string>
+    <string name="nebula_idle_connected_body">iPhone が接続されています。指をスライドするとポインタが動きます。</string>
+    <string name="nebula_settings">設定</string>
+    <string name="nebula_settings_back">戻る</string>
+    <string name="nebula_your_iphone">あなたの iPhone</string>
+    <string name="nebula_label_mac">MacBook</string>
+    <string name="nebula_label_tv">このテレビ</string>
+    <string name="nebula_label_pc">パソコン</string>
+    <string name="nebula_meta">%1$s · %2$s</string>
+</resources>

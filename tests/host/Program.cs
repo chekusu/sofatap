@@ -108,6 +108,15 @@ Reject(Message("\"type\":\"key\",\"key\":\"f12\",\"modifiers\":[]"), "unsupporte
 Reject(Message("\"type\":\"key\",\"key\":\"a\",\"modifiers\":[\"ctrl\",\"ctrl\"]"), "duplicate modifier");
 Reject(Message("\"type\":\"key\",\"key\":\"a\",\"modifiers\":[\"meta\"]"), "unsupported modifier");
 Reject(Message("\"type\":\"ping\"", "invalid"), "malformed UUID");
+var linkToken = "sbl_" + string.Concat(Enumerable.Repeat("0f", 32));
+var linked = Parse(Message("\"type\":\"deviceLink\",\"token\":\"" + linkToken + "\",\"api\":\"https://api.sofatap.app\",\"expiresAt\":\"2026-12-01T00:00:00Z\""));
+Check(linked.Token == linkToken && linked.Api == "https://api.sofatap.app" && linked.ExpiresAt == "2026-12-01T00:00:00Z", "device link fields");
+Check(Parse(Message("\"type\":\"deviceUnlink\"")).Type == "deviceUnlink", "device unlink");
+Reject(Message("\"type\":\"deviceLink\",\"token\":\"sbl_00\",\"api\":\"https://api.sofatap.app\",\"expiresAt\":\"x\""), "short device-link token");
+Reject(Message("\"type\":\"deviceLink\",\"token\":\"" + linkToken.ToUpperInvariant().Replace("SBL_", "sbl_") + "\",\"api\":\"https://api.sofatap.app\",\"expiresAt\":\"x\""), "uppercase device-link token");
+Reject(Message("\"type\":\"deviceLink\",\"token\":\"" + linkToken + "\",\"api\":\"http://api.sofatap.app\",\"expiresAt\":\"x\""), "plain http device-link API");
+Reject(Message("\"type\":\"deviceLink\",\"token\":\"" + linkToken + "\",\"api\":\"https://api.sofatap.app\""), "device link without expiry");
+Reject(Message("\"type\":\"deviceUnlink\",\"token\":\"" + linkToken + "\""), "device unlink with extra field");
 Reject(Message("\"type\":\"exec\",\"command\":\"calc\""), "executable command");
 Reject(Message("\"type\":\"text\",\"text\":" + JsonSerializer.Serialize(new string('x', 16001))), "text overflow");
 Reject(Message("\"type\":\"text\",\"text\":\"\\uD800\""), "unpaired surrogate");

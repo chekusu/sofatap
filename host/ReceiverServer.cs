@@ -18,6 +18,8 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
     private static readonly JsonSerializerOptions JsonOptions = LiveTextWire.Options;
     private readonly byte[] _token = Encoding.ASCII.GetBytes(credentials.Token);
     private CancellationToken _applicationStopping;
+    private volatile DeviceLink? _deviceLink;
+    private sealed record DeviceLink(string Token, string Api, string ExpiresAt);
     public WebApplication Build()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = [], ContentRootPath = AppContext.BaseDirectory });
@@ -119,6 +121,8 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
                     lifetime.Token.ThrowIfCancellationRequested();
                     isPing = action.Type == "ping";
                     ack = session.Execute(action);
+                    if (ack.Ok && action.Type == "deviceLink") _deviceLink = new(action.Token!, action.Api!, action.ExpiresAt!);
+                    else if (ack.Ok && action.Type == "deviceUnlink") _deviceLink = null;
                 }
                 catch (ProtocolException error)
                 {
@@ -182,11 +186,18 @@ public sealed class ReceiverServer(ReceiverOptions options, Credentials credenti
             using var qr = new PngByteQRCode(data);
             return new { host = address, uri, qrPng = Convert.ToBase64String(qr.GetGraphic(5)) };
         }).ToArray();
+        var inputStatus = ReceiverPlatform.StatusCode(input, options.DryRun);
+        var connected = _controller.CurrentCount == 0;
+        // Stable listener/certificate identity is independent of current LAN QR addresses.
+        var peer = new { port = options.ControlPort, fingerprint = credentials.Fingerprint };
+        // Only the Mac app hosts extensions; the field is absent everywhere else and when unlinked.
+        var link = OperatingSystem.IsMacOS() ? _deviceLink : null;
+        if (link is not null)
+            return new { type = "state", name = Environment.MachineName, platform = ReceiverPlatform.Id,
+                inputStatus, dryRun = options.DryRun, connected, pairings, peer,
+                deviceLink = new { token = link.Token, api = link.Api, expiresAt = link.ExpiresAt } };
         return new { type = "state", name = Environment.MachineName, platform = ReceiverPlatform.Id,
-            inputStatus = ReceiverPlatform.StatusCode(input, options.DryRun), dryRun = options.DryRun,
-            connected = _controller.CurrentCount == 0, pairings,
-            // Stable listener/certificate identity is independent of current LAN QR addresses.
-            peer = new { port = options.ControlPort, fingerprint = credentials.Fingerprint } };
+            inputStatus, dryRun = options.DryRun, connected, pairings, peer };
     }
     private string[] LocalAddresses()
     {

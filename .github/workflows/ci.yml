@@ -151,6 +151,12 @@ jobs:
             -o "$RUNNER_TEMP/sofatap-desktop-pipe-tests" desktop/macos/ReceiverProtocol.swift \
             desktop/macos/ReceiverPipeReader.swift desktop/macos/tests/ReceiverPipeTests.swift
           "$RUNNER_TEMP/sofatap-desktop-pipe-tests"
+      - name: Mac receiver onboarding order and extension manifest checks
+        shell: bash
+        run: |
+          xcrun swiftc -parse-as-library -swift-version 5 desktop/macos/ReceiverOnboardingPolicy.swift \
+            desktop/macos/tests/ReceiverOnboardingPolicyTests.swift -o "$RUNNER_TEMP/sofatap-onboarding-tests"
+          "$RUNNER_TEMP/sofatap-onboarding-tests"
       - name: Render Mac receiver design fixtures without a window or backend
         shell: bash
         run: |

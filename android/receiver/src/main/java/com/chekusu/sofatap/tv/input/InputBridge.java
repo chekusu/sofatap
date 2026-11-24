@@ -16,6 +16,10 @@ import org.json.JSONObject;
 public final class InputBridge {
     private static SofatapAccessibilityService service;
     private static Runnable interruptionListener;
+    private static Observer observer;
+
+    /** Sees each phone input after it is handled, for the on-screen guide. Never changes the result. */
+    public interface Observer { void onInput(String action, JSONObject result); }
 
     private InputBridge() {}
 
@@ -55,8 +59,14 @@ public final class InputBridge {
 
     public static JSONObject perform(Context context, String action, double x, double y) {
         requireMainThread();
-        if (service == null) return result(false, "accessibility_required");
-        return service.performInput(action, x, y);
+        JSONObject outcome = service == null ? result(false, "accessibility_required") : service.performInput(action, x, y);
+        if (observer != null) observer.onInput(action, outcome);
+        return outcome;
+    }
+
+    public static void setObserver(Observer value) {
+        requireMainThread();
+        observer = value;
     }
 
     /** End control immediately; no cursor state or queued action survives a disconnect. */

@@ -41,3 +41,20 @@ Copying is an explicit user action. A bounded, validated `sofatap://pair` URI st
 The iPhone keeps its existing single touch surface, internal logo/scan/microphone/keyboard controls, moving dot field and touch ripples. The desktop choice does not add a touchpad, microphone or particle field to receiver windows.
 
 Use synthetic offline fixtures and isolated rendering to review layout and states. Never publish live QR images, credentials or a private machine identity. On the shared Mac, do not activate receiver/test windows on physical displays; live input still requires proven Yomado isolation. Native render/build checks do not establish camera pairing, physical input, signed installation, notarization, Windows lock-screen control or PIN acceptance. Installed releases remain unchanged until a separately verified installation.
+
+## Android TV receiver — Nebula (design A)
+
+The creator selected **Nebula** (concept A of five interactive prototypes) for the TV receiver on 2026-11-24. The TV screen is an animated, non-form experience: a slowly rotating 3D particle cloud in the Mint Calm palette surrounds a crisp white QR island. Particles never cover the QR code.
+
+Onboarding order (`OnboardingFlow`, unit tested):
+
+1. **Allow TV control first.** On first run, before the QR code appears, the screen asks the owner to enable Sofatap in Accessibility settings (same disclosure dialog and ADB fallback as before). *Later* defers it until after pairing.
+2. **Scan.** The cloud orbits the QR code; the line under it shows the network address.
+3. **Pairing animation.** When the phone connects, the QR island bursts into particles, the cloud collapses to a point and re-forms as an iPhone outline.
+4. **Guide driven by real input.** Moving the pointer from the phone parts the star field around the real cursor; enough moves advance to the tap step, and a real click or scroll advances again. Each step can be skipped and times out on its own.
+5. **Every screen.** Particles stream from the phone to a laptop, this TV and a desktop monitor, inviting the owner to install the desktop receivers.
+6. **Idle.** A small breathing cloud with the connection state. A revoked permission brings its step back.
+
+All words and buttons are native views that the remote can focus; OK activates, Menu opens the settings panel (start/stop, pairing another phone, network address, startup, keyboard, updates), Back closes it. The particle field runs in a fixed 1600 × 900 design space scaled to the screen, uses 700 particles on low-RAM TVs instead of 1400, and is drawn still when system animations are off. Screenshots stay blocked while a live pairing code is visible.
+
+The five interactive concept prototypes were design references for this choice, not product screenshots.
