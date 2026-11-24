@@ -267,6 +267,19 @@ class Backend:
             stream.close()
 
 
+def status_notifier_host_present():
+    """True when a notification-area host (StatusNotifierWatcher) is on the session bus."""
+    try:
+        from gi.repository import Gio, GLib
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        reply = bus.call_sync("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                              "NameHasOwner", GLib.Variant("(s)", ("org.kde.StatusNotifierWatcher",)),
+                              GLib.VariantType.new("(b)"), Gio.DBusCallFlags.NONE, 1000, None)
+        return bool(reply.unpack()[0])
+    except Exception:  # No session bus or D-Bus error: no host to show an indicator.
+        return False
+
+
 def create_indicator(Gtk, window):
     """A native notification-area menu where the desktop offers one (KDE, Xfce, Cinnamon,
     Ubuntu's GNOME). AppIndicator menus cannot show images, so the pairing code stays in
@@ -280,6 +293,10 @@ def create_indicator(Gtk, window):
             gi.require_version("AppIndicator3", "0.1")
             from gi.repository import AppIndicator3 as AppIndicator
     except (ImportError, ValueError):
+        return None
+    if not status_notifier_host_present():
+        # Stock GNOME can have the bindings installed with nothing to display them; keep the
+        # minimized-window fallback so the running receiver stays discoverable.
         return None
     indicator = AppIndicator.Indicator.new("sofatap-receiver", "input-mouse-symbolic",
                                            AppIndicator.IndicatorCategory.APPLICATION_STATUS)

@@ -105,4 +105,4 @@ Some desktops support AppIndicator: KDE, Xfce, Cinnamon, Ubuntu's GNOME, and GNO
 
 Indicator menus can't show images, so the pairing code stays in a small window. The first menu item opens that window. Closing it hides it back to the indicator. Launches with `--startup` start hidden.
 
-If neither the AyatanaAppIndicator3 nor the AppIndicator3 GObject bindings are installed, the window minimizes to the task switcher as before. Dry-run previews never add an indicator.
+If neither the AyatanaAppIndicator3 nor the AppIndicator3 GObject bindings are installed, or no notification-area host (StatusNotifierWatcher) is running, the window minimizes to the task switcher as before. Dry-run previews never add an indicator.
