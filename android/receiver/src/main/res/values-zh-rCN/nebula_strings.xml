@@ -1,0 +1,37 @@
+<resources>
+    <string name="nebula_brand">Sofatap · 这台电视</string>
+    <string name="nebula_ready_title">拿起 iPhone，扫一扫</string>
+    <string name="nebula_ready_body">打开 Sofatap，点 ＋ 扫描这个码。手机和电视连同一个 Wi‑Fi 就行。</string>
+    <string name="nebula_permission_kicker">配对之前</string>
+    <string name="nebula_permission_kicker_late">最后一步</string>
+    <string name="nebula_permission_title">允许 Sofatap 操作电视</string>
+    <string name="nebula_permission_body">在无障碍设置里打开 Sofatap，光标才会出现。随时可以关掉。</string>
+    <string name="nebula_later">稍后</string>
+    <string name="nebula_linking_kicker">正在配对</string>
+    <string name="nebula_linking_title">找到你了</string>
+    <string name="nebula_linking_body">正在建立加密连接…</string>
+    <string name="nebula_connected_kicker">已安全配对</string>
+    <string name="nebula_connected_title">你的 iPhone 已连上</string>
+    <string name="nebula_connected_body">以后打开 Sofatap，会自动连上这台电视。</string>
+    <string name="nebula_move_kicker">试一试 · 1 / 2</string>
+    <string name="nebula_move_title">在手机上滑动</string>
+    <string name="nebula_move_body">光标会跟着手指走。</string>
+    <string name="nebula_tap_kicker">试一试 · 2 / 2</string>
+    <string name="nebula_tap_title">轻点就是点击</string>
+    <string name="nebula_tap_body">双指上下滑可以翻页。</string>
+    <string name="nebula_skip">跳过引导</string>
+    <string name="nebula_screens_kicker">不止这台电视</string>
+    <string name="nebula_screens_title">一部 iPhone，控制家里每块屏幕</string>
+    <string name="nebula_screens_body">在 Mac、Windows、Linux 电脑上装 Sofatap 接收器，扫一次码就加进来。</string>
+    <string name="nebula_done">完成</string>
+    <string name="nebula_idle_title">已就绪</string>
+    <string name="nebula_idle_body">打开 iPhone 上的 Sofatap 就能控制这台电视。</string>
+    <string name="nebula_idle_connected_body">iPhone 已连接，滑动手指就能移动光标。</string>
+    <string name="nebula_settings">设置</string>
+    <string name="nebula_settings_back">返回</string>
+    <string name="nebula_your_iphone">你的 iPhone</string>
+    <string name="nebula_label_mac">MacBook</string>
+    <string name="nebula_label_tv">这台电视</string>
+    <string name="nebula_label_pc">电脑</string>
+    <string name="nebula_meta">%1$s · %2$s</string>
+</resources>
