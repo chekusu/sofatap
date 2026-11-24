@@ -5,7 +5,8 @@ namespace SofaTap;
 
 public sealed record ActionMessage(string Id, string Type, double Dx = 0, double Dy = 0,
     string? Button = null, bool Down = false, string? Key = null, string[]? Modifiers = null, string? Text = null,
-    string? Session = null, int Revision = 0, int SelectionStart = 0, int SelectionLength = 0, string? Command = null);
+    string? Session = null, int Revision = 0, int SelectionStart = 0, int SelectionLength = 0, string? Command = null,
+    string? Token = null, string? Api = null, string? ExpiresAt = null);
 public sealed record ActionAck(string Type, string Id, bool Ok, string? Error = null, LiveTextSnapshot? LiveText = null)
 {
     public static ActionAck Success(string id) => new("ack", id, true);
@@ -44,6 +45,10 @@ public static class Protocol
             "textEnd" => ["id", "type", "session"],
             "textSync" => ["id", "type", "session", "revision", "text", "selectionStart", "selectionLength"],
             "ping" => ["id", "type"],
+            // The paired phone hands over a device-link token for optional helpers in paid
+            // builds. The receiver only keeps it in memory and passes it to its parent app.
+            "deviceLink" => ["id", "type", "token", "api", "expiresAt"],
+            "deviceUnlink" => ["id", "type"],
             _ => throw new ProtocolException("Unsupported action type.")
         };
         if (fields.Count != allowed.Length || fields.Keys.Any(key => !allowed.Contains(key)))
@@ -56,6 +61,18 @@ public static class Protocol
                 return new(id, type, Command: command);
             case "textEnd":
                 return new(id, type, Session: Session(fields));
+            case "deviceLink":
+                var token = String(fields, "token");
+                if (token.Length != 68 || !token.StartsWith("sbl_", StringComparison.Ordinal)
+                    || token.Skip(4).Any(c => c is not ((>= '0' and <= '9') or (>= 'a' and <= 'f'))))
+                    throw new ProtocolException("Invalid device-link token.");
+                var api = String(fields, "api");
+                if (api.Length > 256 || !Uri.TryCreate(api, UriKind.Absolute, out var apiUri) || apiUri.Scheme != Uri.UriSchemeHttps
+                    || string.IsNullOrEmpty(apiUri.Host) || !string.IsNullOrEmpty(apiUri.UserInfo))
+                    throw new ProtocolException("Invalid device-link API.");
+                var expiresAt = String(fields, "expiresAt");
+                if (expiresAt.Length is 0 or > 64 || expiresAt.Any(char.IsControl)) throw new ProtocolException("Invalid device-link expiry.");
+                return new(id, type, Token: token, Api: api, ExpiresAt: expiresAt);
             case "textSync":
                 var editText = String(fields, "text");
                 var start = Integer(fields, "selectionStart");
@@ -181,7 +198,7 @@ public sealed class ActionSession(IInputInjector input, int maximumActions = 131
                 // A desktop action can change the caret/target. Pointer motion alone
                 // does not invalidate typing; clicks, keys and drag initiation do.
                 if (action.Type is "click" or "key" or "text" || action.Type == "button" && action.Down) liveText?.End();
-                if (action.Type != "ping") input.Apply(action);
+                if (action.Type is not ("ping" or "deviceLink" or "deviceUnlink")) input.Apply(action);
                 ack = ActionAck.Success(action.Id);
             }
         }

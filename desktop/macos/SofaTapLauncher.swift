@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import CoreServices
 import ImageIO
 import SwiftUI
@@ -44,6 +45,7 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
     private var statusMenu: ReceiverStatusMenu?
     private var onboarding: ReceiverOnboarding?
     private var extensions: ReceiverExtensionHost?
+    private var linkObservation: AnyCancellable?
 
     init(options: ReceiverLaunchOptions) {
         self.options = options
@@ -113,6 +115,14 @@ final class LauncherDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate 
 
         receiver.start()
         extensions?.startAll()
+        if extensions != nil {
+            // Forward the phone's device-link token; a helper restart (state == nil) is not an unlink.
+            linkObservation = receiver.$state.compactMap { $0 }.removeDuplicates { $0.deviceLink == $1.deviceLink }
+                .sink { [weak self] state in
+                    let link = state.deviceLink.flatMap { ReceiverExtensionLink(token: $0.token, api: $0.api, expiresAt: $0.expiresAt) }
+                    self?.extensions?.setLink(link)
+                }
+        }
         // The store build waits for explicit consent: the menu's 登录时启动 item gives it.
         loginItem.configureFirstLaunch()
         updater.start()

@@ -116,6 +116,14 @@ struct ReceiverPeerIdentity: Decodable, Equatable, Sendable {
     }
 }
 
+/// A device-link token the paired phone handed over for optional helpers (paid builds).
+/// Checked again by ReceiverExtensionLink before any helper sees it.
+struct ReceiverDeviceLink: Decodable, Equatable, Sendable {
+    let token: String
+    let api: String
+    let expiresAt: String
+}
+
 struct ReceiverState: Decodable, Equatable, Sendable {
     let type: String
     let name: String
@@ -125,6 +133,7 @@ struct ReceiverState: Decodable, Equatable, Sendable {
     let connected: Bool
     let pairings: [ReceiverPairing]
     var peer: ReceiverPeerIdentity? = nil
+    var deviceLink: ReceiverDeviceLink? = nil
 
     static func decode(_ data: Data) throws -> ReceiverState {
         guard data.count <= ReceiverLineBuffer.maximumFrameBytes else { throw ReceiverProtocolError.oversizedFrame }
