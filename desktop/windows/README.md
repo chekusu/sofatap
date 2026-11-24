@@ -25,3 +25,18 @@ An automatic download never stops an active receiver. It waits until the next or
 Previous versions are retained in a sibling `.Sofatap-backup-<id>` folder for manual recovery; failed replacements are retained separately. These backups are not silently deleted. Protected or linked installation directories may require a manual update; this updater does not elevate privileges. Packages from before this feature need one ordinary manual upgrade to acquire the updater and its file manifest. `--dry-run`, preview fixtures and the test suite never check, download or install an update.
 
 The cross-platform tests exercise release selection, integrity checks, malicious archives, preserved files, bounded streams and directory rollback with inert temporary fixtures. Cross-compilation and these tests are not a substitute for a Windows end-to-end updater test, native tray UI acceptance, or real phone input testing.
+
+## Notification-area menu
+
+The receiver runs from the notification area.
+
+- A left click opens the pairing window.
+- A right click opens a native menu. The computer's state is at the top, followed by:
+  - 显示配对二维码 (this becomes 配对新 iPhone once a phone is connected)
+  - 复制配对链接
+  - 刷新
+  - 登录后启动
+  - the update items
+  - 退出
+
+Closing the window leaves the receiver running in the notification area. A moment after a phone connects, the window hides back to the notification area on its own.

@@ -267,6 +267,47 @@ class Backend:
             stream.close()
 
 
+def create_indicator(Gtk, window):
+    """A native notification-area menu where the desktop offers one (KDE, Xfce, Cinnamon,
+    Ubuntu's GNOME). AppIndicator menus cannot show images, so the pairing code stays in
+    the small window that 显示配对二维码 opens. Returns None when no indicator library exists."""
+    try:
+        import gi
+        try:
+            gi.require_version("AyatanaAppIndicator3", "0.1")
+            from gi.repository import AyatanaAppIndicator3 as AppIndicator
+        except (ImportError, ValueError):
+            gi.require_version("AppIndicator3", "0.1")
+            from gi.repository import AppIndicator3 as AppIndicator
+    except (ImportError, ValueError):
+        return None
+    indicator = AppIndicator.Indicator.new("sofatap-receiver", "input-mouse-symbolic",
+                                           AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+    menu = Gtk.Menu()
+    status = Gtk.MenuItem(label="正在准备配对")
+    status.set_sensitive(False)
+    items = [status, Gtk.SeparatorMenuItem()]
+    for label, handler in (("显示配对二维码…", window.show_receiver), ("复制配对链接", window.copy_pairing),
+                           ("刷新", window.refresh_state)):
+        item = Gtk.MenuItem(label=label)
+        item.connect("activate", handler)
+        items.append(item)
+    items.append(Gtk.SeparatorMenuItem())
+    quit_item = Gtk.MenuItem(label="退出 Sofatap")
+    quit_item.connect("activate", window.close_receiver)
+    items.append(quit_item)
+    for item in items:
+        menu.append(item)
+    menu.show_all()
+    indicator.set_menu(menu)
+    indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
+    indicator.set_title("Sofatap")
+    window.tray_status = status
+    window.tray_indicator = indicator
+    status.set_label(window.status.get_text())
+    return indicator
+
+
 def create_window(Gtk, Gdk, GdkPixbuf, GLib, backend_factory, autostart=None, startup_error=None, updater=None):
     """Build the real native UI with an injectable owned backend for isolated previews."""
     from gi.repository import Pango
@@ -552,10 +593,19 @@ def create_window(Gtk, Gdk, GdkPixbuf, GLib, backend_factory, autostart=None, st
         def close_window(self, *_):
             if self.autostart is None or self.failed:
                 return self.close_receiver()
-            # Remain discoverable in the desktop task switcher; no tray extension
-            # is required on GNOME. Explicit Quit still closes the owned backend.
+            if getattr(self, "tray_status", None) is not None:
+                # With a notification-area indicator the window steps back to it.
+                self.hide()
+                return True
+            # Without one (stock GNOME), remain discoverable in the task switcher.
+            # Explicit Quit still closes the owned backend.
             self.iconify()
             return True
+
+        def show_receiver(self, *_):
+            self.show()
+            self.deiconify()
+            self.present()
 
         def apply_state(self, state):
             if self.stopping or self.failed:
@@ -637,6 +687,8 @@ def create_window(Gtk, Gdk, GdkPixbuf, GLib, backend_factory, autostart=None, st
 
         def set_status(self, message, kind=None, detail=""):
             self.status.set_text(message)
+            if getattr(self, "tray_status", None) is not None:
+                self.tray_status.set_label(message)
             context = self.status_dot.get_style_context()
             for name in ("ready", "attention"):
                 context.remove_class(name)
@@ -814,8 +866,12 @@ def main(argv=None):
         window = create_window(Gtk, Gdk, GdkPixbuf, GLib,
             lambda on_state, on_failure: Backend(executable, on_state, on_failure, dry_run=args.dry_run),
             autostart=startup, startup_error=startup_error, updater=updater)
+        indicator = None if args.dry_run else create_indicator(Gtk, window)
         if args.startup:
-            window.iconify()
+            if indicator is not None:
+                window.hide()
+            else:
+                window.iconify()
         if instance is not None:
             def check_activation():
                 if window.stopping:

@@ -92,3 +92,17 @@ Packaged builds from 0.8.0 beta.1 include **检查更新** and a default-on **�
 Keep the portable folder in a stable directory owned by your user. System-owned/read-only installations require a manual update; no privilege elevation is attempted. Updates preserve external pairing/preferences and custom files, retain a backup next to the installation, and roll back failed directory replacement. Backend startup and syntax are checked before replacement; GTK/input failures after a completed restart do not yet trigger an automatic rollback. See [all platforms and integrity details](../../docs/RECEIVER-UPDATES.md).
 
 Run `python3 -B desktop/linux/check_updates.py` for inert package tests covering version/channel selection, bad metadata, checksum failures, traversal/links, architecture, opt-out, rollback and custom-file retention. These do not establish real desktop upgrade acceptance.
+
+## Notification-area menu
+
+Some desktops support AppIndicator: KDE, Xfce, Cinnamon, Ubuntu's GNOME, and GNOME with the AppIndicator extension. On those, the receiver adds a native menu to the notification area with these items:
+
+- the current state
+- 显示配对二维码…
+- 复制配对链接
+- 刷新
+- 退出
+
+Indicator menus can't show images, so the pairing code stays in a small window. The first menu item opens that window. Closing it hides it back to the indicator. Launches with `--startup` start hidden.
+
+If neither the AyatanaAppIndicator3 nor the AppIndicator3 GObject bindings are installed, the window minimizes to the task switcher as before. Dry-run previews never add an indicator.
