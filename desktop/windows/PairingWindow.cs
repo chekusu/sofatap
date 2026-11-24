@@ -434,6 +434,17 @@ internal sealed class PairingWindow : Form
         _status.Text = "接收端连接已中断";
         _status.IndicatorColor = MintCalm.Attention;
         ClearQr("请退出并重新打开接收器\n确认完整解压了 Sofatap 安装包");
+        // The tray is the main status surface while the window is hidden; it must not keep
+        // claiming a live connection, and a pending retreat must not hide this failure.
+        _connectedRetreat.Stop();
+        _phoneConnected = false;
+        if (_tray is not null)
+        {
+            _trayStatus!.Text = _status.Text;
+            _trayShow!.Text = "显示配对二维码…";
+            _trayCopy!.Enabled = false;
+            _tray.Text = "Sofatap · " + _status.Text;
+        }
         LayoutContents();
     }
 
