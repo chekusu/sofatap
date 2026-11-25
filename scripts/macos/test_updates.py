@@ -1,3 +1,4 @@
+import base64
 import importlib.util
 import json
 from pathlib import Path
@@ -55,6 +56,27 @@ class UpdatePackagingTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('completed notarization', result.stderr)
             self.assertFalse((root / 'output').exists())
+
+    def test_release_key_file_yields_its_public_key(self):
+        spec = importlib.util.spec_from_file_location('generate_appcast', Path(__file__).with_name('generate-appcast.py'))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with tempfile.TemporaryDirectory() as temporary:
+            key = Path(temporary) / 'key'
+            public = bytes(range(32))
+            key.write_text(base64.b64encode(bytes(64) + public).decode() + '\n')
+            self.assertEqual(module.public_key_from_file(key), base64.b64encode(public).decode())
+            key.write_text(base64.b64encode(b'short').decode())
+            with self.assertRaises(ValueError):
+                module.public_key_from_file(key)
+            try:
+                from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+            except ImportError:
+                return
+            seed = bytes(range(1, 33))
+            key.write_text(base64.b64encode(seed).decode())
+            expected = Ed25519PrivateKey.from_private_bytes(seed).public_key().public_bytes_raw()
+            self.assertEqual(module.public_key_from_file(key), base64.b64encode(expected).decode())
 
 
 if __name__ == '__main__':

@@ -1,0 +1,323 @@
+name: Desktop receiver release
+
+# A desktop version bump merged to main is a release. When updates/desktop-version.txt names a version that has no
+# v<version> tag yet, this builds Windows and Linux on Ubuntu and both Mac architectures on a Hayabuild Mac
+# (Developer ID signing, Apple notarization, signed Sparkle feeds), publishes the GitHub release v<version>,
+# checks the public downloads, and only then commits the signed Mac feeds to main so installed receivers update.
+#
+# No GitHub Actions secrets. The Mac job takes its signing material from Hayabuild's secret store through GitHub
+# OIDC, kept for this repository, refs/heads/main and .github/workflows/desktop-release.yml:
+#   MAC_DEVELOPER_ID_P12           base64 of the "Developer ID Application: CHEKUSU INC." certificate + key (.p12)
+#   MAC_DEVELOPER_ID_P12_PASSWORD  that .p12's export password
+#   MAC_NOTARY_KEY_ID              App Store Connect API key ID used for notarization
+#   MAC_NOTARY_ISSUER_ID           its issuer ID
+#   MAC_NOTARY_KEY_P8              the key's .p8 text
+#   SPARKLE_ED_PRIVATE_KEY         the Sparkle update key (generate_keys --account com.chekusu.sofatap.receiver.sparkle -x)
+# The notary names deliberately avoid ASC_*: notarize-macos.sh refuses App Store Connect credentials from the
+# environment and uses only a Keychain profile, which the job creates in a throwaway keychain.
+on:
+  push:
+    branches: [main]
+    paths: [updates/desktop-version.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+env:
+  HAYABUILD_API: https://api.haya.build
+  SIGN_IDENTITY: "Developer ID Application: CHEKUSU INC. (FKSR2JD63B)"
+
+jobs:
+  plan:
+    name: Version and tag
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: plan
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Releases run from main only"; exit 1; }
+          version=$(tr -d '\r\n' < updates/desktop-version.txt)
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::Bad desktop version: $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Done only when the tag exists AND both Mac feeds on main point at it. A tag without the feeds is an
+          # interrupted release: run again, which rebuilds and finishes it (the publish step reuses the release).
+          git fetch -q --depth=1 origin main
+          published=true
+          for arch in arm64 x64; do
+            git show "FETCH_HEAD:updates/macos/$arch/appcast.xml" | grep -qF "/releases/download/v$version/" || published=false
+          done
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null && [ "$published" = true ]; then
+            echo "v$version is already released; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing desktop $version from $GITHUB_SHA"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  portable:
+    name: Windows and Linux packages
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build Windows x64 and Linux x64/arm64
+        run: |
+          export SOFATAP_DOTNET="$(command -v dotnet)"
+          bash scripts/build-windows.sh
+          bash scripts/build-linux.sh x64
+          bash scripts/build-linux.sh arm64
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-portable
+          path: |
+            artifacts/SofaTap-Windows-x64.zip
+            artifacts/SofaTap-Linux-x64.tar.gz
+            artifacts/SofaTap-Linux-arm64.tar.gz
+          if-no-files-found: error
+
+  mac:
+    name: Mac · sign, notarize and Sparkle feeds
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
+    runs-on: hayabuild-macos
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write   # Hayabuild secrets
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Install release tools
+        run: |
+          python3 -m pip install 'cryptography>=44,<47'
+          command -v asc >/dev/null || brew install asc || brew install rudrankriyam/tap/asc
+          asc --version
+
+      - name: Secrets from Hayabuild
+        run: sh .github/scripts/hayabuild-secrets.sh
+
+      - name: Check secrets
+        run: |
+          missing=""
+          for name in MAC_DEVELOPER_ID_P12 MAC_DEVELOPER_ID_P12_PASSWORD MAC_NOTARY_KEY_ID MAC_NOTARY_ISSUER_ID MAC_NOTARY_KEY_P8 SPARKLE_ED_PRIVATE_KEY; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          [ -z "$missing" ] || { echo "::error::Hayabuild gave no:$missing (kept for refs/heads/main and desktop-release.yml)"; exit 1; }
+
+      - name: Throwaway keychain with the Developer ID identity
+        run: |
+          set -euo pipefail
+          secrets="$RUNNER_TEMP/release-secrets"; mkdir -m 700 "$secrets"
+          keychain="$RUNNER_TEMP/sofatap-release.keychain-db"
+          # Random per run, never stored; the keychain file is deleted when the job ends.
+          keychain_password=$(openssl rand -hex 24)
+          echo "::add-mask::$keychain_password"
+          security list-keychains -d user | tr -d '" ' > "$secrets/keychains.orig"
+          security default-keychain -d user | tr -d '" ' > "$secrets/default.orig"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          # Re-wrap the .p12 under the per-run password in the legacy format macOS `security` reads, so the stored
+          # export password stays in the environment and never becomes a command-line argument.
+          SECRETS_DIR="$secrets" KEYCHAIN_PASSWORD="$keychain_password" python3 - <<'PY'
+          import base64, os
+          from cryptography.hazmat.primitives import hashes, serialization
+          from cryptography.hazmat.primitives.serialization import pkcs12
+          key, cert, extra = pkcs12.load_key_and_certificates(base64.b64decode(os.environ["MAC_DEVELOPER_ID_P12"]),
+                                                              os.environ["MAC_DEVELOPER_ID_P12_PASSWORD"].encode())
+          encryption = (serialization.PrivateFormat.PKCS12.encryption_builder().kdf_rounds(50000)
+                        .key_cert_algorithm(pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC).hmac_hash(hashes.SHA1())
+                        .build(os.environ["KEYCHAIN_PASSWORD"].encode()))
+          path = os.path.join(os.environ["SECRETS_DIR"], "identity.p12")
+          with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as out:
+              out.write(pkcs12.serialize_key_and_certificates(b"sofatap", key, cert, extra, encryption))
+          PY
+          security import "$secrets/identity.p12" -k "$keychain" -f pkcs12 -P "$keychain_password" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$secrets/identity.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(cat "$secrets/keychains.orig")
+          security default-keychain -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain" | grep -F "\"$SIGN_IDENTITY\"" >/dev/null \
+            || { echo "::error::The .p12 does not hold $SIGN_IDENTITY"; exit 1; }
+          echo "RELEASE_SECRETS=$secrets" >> "$GITHUB_ENV"
+          echo "RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+
+      - name: Notarization profile and Sparkle key
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$MAC_NOTARY_KEY_P8" > "$RELEASE_SECRETS/AuthKey.p8"
+          printf '%s\n' "$SPARKLE_ED_PRIVATE_KEY" > "$RELEASE_SECRETS/sparkle.key"
+          asc auth login --name sofatap-release --key-id "$MAC_NOTARY_KEY_ID" --issuer-id "$MAC_NOTARY_ISSUER_ID" \
+            --private-key "$RELEASE_SECRETS/AuthKey.p8" >/dev/null
+          rm -f "$RELEASE_SECRETS/AuthKey.p8"
+          echo "SOFATAP_SPARKLE_KEY_FILE=$RELEASE_SECRETS/sparkle.key" >> "$GITHUB_ENV"
+
+      - name: Latest published feeds and the next Sparkle build number
+        run: |
+          # The source stays at the triggering commit, but the feeds come from main now: an earlier release may
+          # have committed newer feeds after this run started (runs of this workflow are serialized).
+          feeds="$RUNNER_TEMP/published-feeds"
+          git fetch -q --depth=1 origin main
+          for arch in arm64 x64; do
+            mkdir -p "$feeds/$arch"
+            git show "FETCH_HEAD:updates/macos/$arch/appcast.xml" > "$feeds/$arch/appcast.xml"
+          done
+          echo "PUBLISHED_FEEDS=$feeds" >> "$GITHUB_ENV"
+          build=$(FEEDS="$feeds" python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          tag = "{http://www.andymatuschak.org/xml-namespaces/sparkle}version"
+          builds = [int(e.text) for arch in ("arm64", "x64")
+                    for e in ET.parse(f"{os.environ['FEEDS']}/{arch}/appcast.xml").iter(tag) if e.text and e.text.isdigit()]
+          print(max(builds, default=0) + 1)
+          PY
+          )
+          echo "Build number $build"
+          echo "SOFATAP_MAC_BUILD_NUMBER=$build" >> "$GITHUB_ENV"
+
+      - name: Build, notarize and sign the feeds
+        run: |
+          set -euo pipefail
+          export SOFATAP_DOTNET="$(command -v dotnet)" SOFATAP_SIGN_IDENTITY="$SIGN_IDENTITY"
+          for arch in arm64 x64; do
+            echo "::group::$arch"
+            staging="$RUNNER_TEMP/mac-$arch"
+            SOFATAP_MAC_STAGING="$staging" bash scripts/build-macos.sh "$arch"
+            bash scripts/notarize-macos.sh --profile sofatap-release --submit \
+              --app "$staging/SofaTap-macOS-$arch/Sofatap Receiver.app" \
+              --manifest "$staging/SofaTap-macOS-$arch/BUILD-MANIFEST.json" \
+              --output-dir "artifacts/notarization/$arch"
+            python3 scripts/macos/generate-appcast.py --architecture "$arch" --tag "v$VERSION" \
+              --archive "artifacts/notarization/$arch/SofaTap-macOS-$arch-notarized.zip" \
+              --receipt "artifacts/notarization/$arch/NOTARIZATION-RECEIPT.json" \
+              --previous-feed "$PUBLISHED_FEEDS/$arch/appcast.xml" \
+              --output-dir "artifacts/appcast/$arch"
+            mkdir -p artifacts/mac-release/feeds/$arch
+            cp "artifacts/notarization/$arch/SofaTap-macOS-$arch-notarized.zip" artifacts/mac-release/
+            cp "artifacts/notarization/$arch/NOTARIZATION-RECEIPT.json" "artifacts/mac-release/feeds/$arch/"
+            cp "artifacts/appcast/$arch/appcast.xml" "artifacts/appcast/$arch/APPCAST-RECEIPT.json" "artifacts/mac-release/feeds/$arch/"
+            echo "::endgroup::"
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-mac
+          path: artifacts/mac-release/
+          if-no-files-found: error
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          asc auth logout --name sofatap-release >/dev/null 2>&1 || true
+          if [ -n "${RELEASE_SECRETS:-}" ]; then
+            [ -s "$RELEASE_SECRETS/keychains.orig" ] && security list-keychains -d user -s $(cat "$RELEASE_SECRETS/keychains.orig")
+            [ -s "$RELEASE_SECRETS/default.orig" ] && security default-keychain -d user -s "$(cat "$RELEASE_SECRETS/default.orig")"
+            rm -rf "$RELEASE_SECRETS"
+          fi
+          [ -z "${RELEASE_KEYCHAIN:-}" ] || security delete-keychain "$RELEASE_KEYCHAIN" || true
+
+  publish:
+    name: Publish v${{ needs.plan.outputs.version }}
+    needs: [plan, portable, mac]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: ${{ runner.temp }}/dist
+      - name: Assemble the release files
+        run: |
+          set -euo pipefail
+          dist="$RUNNER_TEMP/dist"; out="$RUNNER_TEMP/release"; mkdir -p "$out"
+          cp "$dist"/desktop-portable/* "$dist"/desktop-mac/*.zip "$out/"
+          cd "$out"
+          for file in *.zip *.tar.gz; do sha256sum "$file" > "$file.sha256"; done
+          python3 - "$VERSION" "$GITHUB_SHA" <<'PY'
+          import hashlib, json, pathlib, sys
+          order = ["SofaTap-Windows-x64.zip", "SofaTap-Linux-x64.tar.gz", "SofaTap-Linux-arm64.tar.gz",
+                   "SofaTap-macOS-arm64-notarized.zip", "SofaTap-macOS-x64-notarized.zip"]
+          assets = [{"name": n, "bytes": pathlib.Path(n).stat().st_size,
+                     "sha256": hashlib.sha256(pathlib.Path(n).read_bytes()).hexdigest()} for n in order]
+          pathlib.Path("RELEASE-MANIFEST.json").write_text(json.dumps(
+              {"version": sys.argv[1], "sourceCommit": sys.argv[2], "assets": assets}, indent=2) + "\n")
+          PY
+          ls -l
+
+      - name: Publish the GitHub release
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          if [ -f "updates/release-notes/desktop-$VERSION.md" ]; then cp "updates/release-notes/desktop-$VERSION.md" "$notes"; else
+            printf 'Sofatap desktop receiver **%s**.\n\nWindows x64, Linux x64/ARM64 and Mac (Apple silicon and Intel, Developer ID signed and notarized). Installed receivers with the updater pick this up from their update check.\n\nSource: %s. SHA-256 for every file is in RELEASE-MANIFEST.json and the .sha256 files.\n' "$VERSION" "$GITHUB_SHA" > "$notes"
+          fi
+          prerelease=""; case "$VERSION" in *-*) prerelease="--prerelease";; esac
+          cd "$RUNNER_TEMP/release"
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Resuming an interrupted release: its feeds never reached main, so replace the files with this
+            # run's (the new feeds sign these exact Mac archives).
+            echo "Release v$VERSION exists without published feeds; replacing its files."
+            gh release upload "v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber ./*
+          else
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft $prerelease \
+              --title "Sofatap desktop $VERSION" --notes-file "$notes" ./*
+          fi
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+
+      - name: Check the public downloads
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release"
+          for file in *.zip *.tar.gz; do
+            for attempt in 1 2 3 4 5; do
+              got=$(curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/$file" | sha256sum | cut -d' ' -f1) && [ -n "$got" ] && break
+              sleep $((attempt * 10))
+            done
+            want=$(cut -d' ' -f1 "$file.sha256")
+            [ "$got" = "$want" ] || { echo "::error::$file public download $got differs from $want"; exit 1; }
+            echo "$file ok"
+          done
+
+      - name: Commit the signed Mac feeds
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3 4; do
+            git fetch origin main && git reset --hard origin/main
+            for arch in arm64 x64; do cp "$RUNNER_TEMP/dist/desktop-mac/feeds/$arch/appcast.xml" "updates/macos/$arch/appcast.xml"; done
+            git add updates/macos
+            git commit -m "Publish desktop $VERSION Mac update feeds" -m "Signed by the Desktop receiver release workflow for v$VERSION."
+            git push origin HEAD:main && exit 0
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push the feeds; the release is published, commit updates/macos from the desktop-mac artifact"
+          exit 1

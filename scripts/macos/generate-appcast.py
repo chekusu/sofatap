@@ -7,6 +7,7 @@ Publish the ZIP first, verify its public bytes, then commit the generated feed.
 import argparse
 import base64
 import json
+import os
 from pathlib import Path
 import plistlib
 import re
@@ -19,6 +20,21 @@ import zipfile
 from sparkle import CONFIG, digest, fetch
 
 SPARKLE = "{http://www.andymatuschak.org/xml-namespaces/sparkle}"
+
+
+def public_key_from_file(path):
+    """Public half of a Sparkle private key file, so CI can check it before signing anything.
+
+    Sparkle exports either a 32-byte seed (generate_keys -x) or the legacy 96-byte form (64-byte secret key followed
+    by the public key); libsodium's 64-byte secret key also ends with the public key.
+    """
+    raw = base64.b64decode(Path(path).read_text().strip(), validate=True)
+    if len(raw) in (64, 96):
+        return base64.b64encode(raw[-32:]).decode()
+    if len(raw) != 32:
+        raise ValueError("Sparkle key file must hold a base64 Ed25519 key")
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    return base64.b64encode(Ed25519PrivateKey.from_private_bytes(raw).public_key().public_bytes_raw()).decode()
 
 
 def main():
@@ -60,17 +76,24 @@ def main():
         raise ValueError("Archive version, feed, or signature policy differs from release configuration")
     root = CONFIG.parents[2]
     dependency = fetch(root / ".tools" / ("Sparkle-" + config["sparkleVersion"]))
-    account = config["keychainAccount"]
-    public_key = subprocess.check_output([str(dependency / "bin/generate_keys"), "--account", account, "-p"], text=True).strip()
+    # The release workflow passes the key as a 0600 file outside the repository (SOFATAP_SPARKLE_KEY_FILE); the
+    # publishing Mac keeps it in its Keychain account instead.
+    key_file = os.environ.get("SOFATAP_SPARKLE_KEY_FILE")
+    if key_file:
+        key = ["--ed-key-file", key_file]
+        public_key = public_key_from_file(key_file)
+    else:
+        key = ["--account", config["keychainAccount"]]
+        public_key = subprocess.check_output([str(dependency / "bin/generate_keys"), *key, "-p"], text=True).strip()
     if public_key != config["publicEdKey"]:
-        raise ValueError("Release Keychain account does not match embedded public key")
+        raise ValueError("Release signing key does not match embedded public key")
     if args.output_dir.exists():
         raise ValueError("Choose a new staging output directory; previous feeds are never edited in place")
     with tempfile.TemporaryDirectory(prefix="sofatap-appcast-") as temporary:
         stage = Path(temporary)
         shutil.copyfile(archive, stage / archive.name)
         if args.previous_feed:
-            subprocess.run([str(dependency / "bin/sign_update"), "--account", account, "--verify", str(args.previous_feed)], check=True)
+            subprocess.run([str(dependency / "bin/sign_update"), *key, "--verify", str(args.previous_feed)], check=True)
             previous = ET.parse(args.previous_feed)
             versions = [int(e.text) for e in previous.iter(SPARKLE + "version") if e.text and e.text.isdigit()]
             if versions and max(versions) >= int(info["CFBundleVersion"]):
@@ -80,13 +103,13 @@ def main():
                     raise ValueError("Previous feed contains an unexpected release or architecture")
             shutil.copyfile(args.previous_feed, stage / "appcast.xml")
         prefix = config["releaseURLPrefix"] + args.tag + "/"
-        subprocess.run([str(dependency / "bin/generate_appcast"), "--account", account,
+        subprocess.run([str(dependency / "bin/generate_appcast"), *key,
                         "--maximum-deltas", "0", "--maximum-versions", "3",
                         "--download-url-prefix", prefix, "--link", "https://sofatap.app",
                         "--versions", info["CFBundleVersion"],
                         *(["--channel", "beta"] if "-" in args.tag else []), str(stage)], check=True)
         feed = stage / "appcast.xml"
-        subprocess.run([str(dependency / "bin/sign_update"), "--account", account, "--verify", str(feed)], check=True)
+        subprocess.run([str(dependency / "bin/sign_update"), *key, "--verify", str(feed)], check=True)
         xml = ET.parse(feed)
         candidates = [item for item in xml.iter("item") if item.findtext(SPARKLE + "version") == info["CFBundleVersion"]]
         if len(candidates) != 1:
@@ -98,7 +121,7 @@ def main():
         signature = enclosure.get(SPARKLE + "edSignature", "") if enclosure is not None else ""
         if enclosure is None or enclosure.get("url") != prefix + archive.name or int(enclosure.get("length", "0")) != archive.stat().st_size or len(base64.b64decode(signature, validate=True)) != 64:
             raise ValueError("Generated update enclosure does not match the notarized archive")
-        subprocess.run([str(dependency / "bin/sign_update"), "--account", account, "--verify", str(archive), signature], check=True)
+        subprocess.run([str(dependency / "bin/sign_update"), *key, "--verify", str(archive), signature], check=True)
         args.output_dir.mkdir(parents=True)
         shutil.copyfile(feed, args.output_dir / "appcast.xml")
         (args.output_dir / "APPCAST-RECEIPT.json").write_text(json.dumps({

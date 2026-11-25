@@ -1,0 +1,158 @@
+name: Android TV receiver release
+
+# An Android TV version bump merged to main is a release. When android/receiver/build.gradle names a versionName
+# that has no android-tv-v<version> tag yet, this runs the JVM checks, builds the APK signed with the persistent
+# Sofatap TV signing certificate, checks that certificate and the version, and publishes the GitHub release
+# android-tv-v<version> with Sofatap-Android-TV-<version>.apk and SHA256SUMS.txt — the exact names the in-app
+# updater (UpdatePolicy) looks for.
+#
+# The TV receiver's public builds have always been signed with one development (debug) keystore; the in-app updater
+# accepts only that certificate (SHA-256 638afe6a…), so the keystore must stay the same. No GitHub Actions secrets:
+# ANDROID_TV_DEBUG_KEYSTORE (base64 of that debug.keystore) comes from Hayabuild's secret store through GitHub OIDC,
+# kept for this repository, refs/heads/main and .github/workflows/android-tv-release.yml.
+on:
+  push:
+    branches: [main]
+    paths: [android/receiver/build.gradle]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-tv-release
+  cancel-in-progress: false
+
+env:
+  HAYABUILD_API: https://api.haya.build
+  CERT_SHA256: 638afe6aadb3c2d76001ef682c6a48b0f3243755fa9ae131b9804eed36ede4d9
+
+jobs:
+  release:
+    name: Build, check and publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write   # Hayabuild secrets
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Version and tag
+        id: plan
+        run: |
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Releases run from main only"; exit 1; }
+          version=$(sed -n "s/^ *versionName '\([^']*\)' *$/\1/p" android/receiver/build.gradle)
+          code=$(sed -n 's/^ *versionCode \([0-9]*\) *$/\1/p' android/receiver/build.gradle)
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::Bad versionName: $version"; exit 1; }
+          [ -n "$code" ] || { echo "::error::No versionCode"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          # Done only when the release already carries the APK; a tag without it is an interrupted release.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/android-tv-v$version" \
+               --jq ".assets[] | select(.name == \"Sofatap-Android-TV-$version.apk\") | .digest" 2>/dev/null | grep -q '^sha256:'; then
+            echo "android-tv-v$version is already released; nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing Android TV $version ($code) from $GITHUB_SHA"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Secrets from Hayabuild
+        if: steps.plan.outputs.release == 'true'
+        run: sh .github/scripts/hayabuild-secrets.sh
+
+      - name: Install the signing keystore
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          set -euo pipefail
+          [ -n "${ANDROID_TV_DEBUG_KEYSTORE:-}" ] || { echo "::error::Hayabuild gave no ANDROID_TV_DEBUG_KEYSTORE (kept for refs/heads/main and android-tv-release.yml)"; exit 1; }
+          # The Android Gradle plugin signs debug builds with <ANDROID_USER_HOME or ~/.android>/debug.keystore.
+          keystore="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+          mkdir -p "$(dirname "$keystore")"
+          [ ! -e "$keystore" ] || { echo "::error::The runner already has a debug keystore"; exit 1; }
+          umask 077
+          printf '%s' "$ANDROID_TV_DEBUG_KEYSTORE" | base64 --decode > "$keystore"
+          echo "TV_KEYSTORE=$keystore" >> "$GITHUB_ENV"
+
+      - name: Select JDK 17 and verify the runner Android SDK
+        if: steps.plan.outputs.release == 'true'
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar"
+          test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
+
+      - name: JVM checks and APK
+        if: steps.plan.outputs.release == 'true'
+        working-directory: android
+        run: |
+          # Maven Central sometimes answers 429; one more try after a pause.
+          ./gradlew --no-daemon --max-workers=2 :receiver:testDebugUnitTest :receiver:assembleDebug \
+            || { sleep 60; ./gradlew --no-daemon --max-workers=2 :receiver:testDebugUnitTest :receiver:assembleDebug; }
+
+      - name: Check the certificate and version
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          CODE: ${{ steps.plan.outputs.code }}
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          apk=android/receiver/build/outputs/apk/debug/receiver-debug.apk
+          signers=$("$tools/apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p')
+          [ "$signers" = "$CERT_SHA256" ] || { echo "::error::APK is signed by '$signers', not the Sofatap TV certificate"; exit 1; }
+          badging=$("$tools/aapt2" dump badging "$apk" | head -1)
+          echo "$badging"
+          echo "$badging" | grep -F "name='com.chekusu.sofatap.tv' versionCode='$CODE' versionName='$VERSION'" >/dev/null \
+            || { echo "::error::APK package/version differs from build.gradle"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$apk" "$RUNNER_TEMP/release/Sofatap-Android-TV-$VERSION.apk"
+          cd "$RUNNER_TEMP/release"
+          sha256sum "Sofatap-Android-TV-$VERSION.apk" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish the GitHub release
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+          CODE: ${{ steps.plan.outputs.code }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/notes.md"
+          if [ -f "updates/release-notes/android-tv-$VERSION.md" ]; then cp "updates/release-notes/android-tv-$VERSION.md" "$notes"; else
+            printf 'Sofatap Android / Google TV receiver **%s** (version code %s).\n\nReceivers with the updater: Check for Updates → Install Update. Older receivers: install this APK over the previous Sofatap package; do not uninstall it first. Same signing certificate as earlier TV releases; not a Play Store release.\n\nSource: %s. SHA-256 is in SHA256SUMS.txt.\n' "$VERSION" "$CODE" "$GITHUB_SHA" > "$notes"
+          fi
+          prerelease=""; case "$VERSION" in *-*) prerelease="--prerelease";; esac
+          cd "$RUNNER_TEMP/release"
+          if gh release view "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release android-tv-v$VERSION exists without its APK; uploading."
+            gh release upload "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber "Sofatap-Android-TV-$VERSION.apk" SHA256SUMS.txt
+          else
+            gh release create "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $prerelease \
+              --title "Sofatap Android TV $VERSION" --notes-file "$notes" "Sofatap-Android-TV-$VERSION.apk" SHA256SUMS.txt
+          fi
+
+      - name: Check the public download
+        if: steps.plan.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          name="Sofatap-Android-TV-$VERSION.apk"
+          want=$(cut -d' ' -f1 "$RUNNER_TEMP/release/SHA256SUMS.txt")
+          for attempt in 1 2 3 4 5; do
+            got=$(curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/download/android-tv-v$VERSION/$name" | sha256sum | cut -d' ' -f1) && [ "$got" = "$want" ] && break
+            sleep $((attempt * 10))
+          done
+          [ "$got" = "$want" ] || { echo "::error::Public download $got differs from $want"; exit 1; }
+          # The in-app updater requires the API's sha256 digest on the asset.
+          digest=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/android-tv-v$VERSION" --jq ".assets[] | select(.name == \"$name\") | .digest")
+          [ "$digest" = "sha256:$want" ] || { echo "::error::Release API digest '$digest' differs"; exit 1; }
+          echo "$name ok ($want)"
+
+      - name: Remove the keystore
+        if: always()
+        run: '[ -z "${TV_KEYSTORE:-}" ] || rm -f "$TV_KEYSTORE"'
