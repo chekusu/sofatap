@@ -50,7 +50,9 @@ jobs:
           [ -n "$code" ] || { echo "::error::No versionCode"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "code=$code" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/android-tv-v$version" >/dev/null; then
+          # Done only when the release already carries the APK; a tag without it is an interrupted release.
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/android-tv-v$version" \
+               --jq ".assets[] | select(.name == \"Sofatap-Android-TV-$version.apk\") | .digest" 2>/dev/null | grep -q '^sha256:'; then
             echo "android-tv-v$version is already released; nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
@@ -125,8 +127,13 @@ jobs:
           fi
           prerelease=""; case "$VERSION" in *-*) prerelease="--prerelease";; esac
           cd "$RUNNER_TEMP/release"
-          gh release create "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $prerelease \
-            --title "Sofatap Android TV $VERSION" --notes-file "$notes" "Sofatap-Android-TV-$VERSION.apk" SHA256SUMS.txt
+          if gh release view "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release android-tv-v$VERSION exists without its APK; uploading."
+            gh release upload "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber "Sofatap-Android-TV-$VERSION.apk" SHA256SUMS.txt
+          else
+            gh release create "android-tv-v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" $prerelease \
+              --title "Sofatap Android TV $VERSION" --notes-file "$notes" "Sofatap-Android-TV-$VERSION.apk" SHA256SUMS.txt
+          fi
 
       - name: Check the public download
         if: steps.plan.outputs.release == 'true'

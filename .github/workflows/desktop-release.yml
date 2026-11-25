@@ -47,7 +47,14 @@ jobs:
           version=$(tr -d '\r\n' < updates/desktop-version.txt)
           echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$' || { echo "::error::Bad desktop version: $version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+          # Done only when the tag exists AND both Mac feeds on main point at it. A tag without the feeds is an
+          # interrupted release: run again, which rebuilds and finishes it (the publish step reuses the release).
+          git fetch -q --depth=1 origin main
+          published=true
+          for arch in arm64 x64; do
+            git show "FETCH_HEAD:updates/macos/$arch/appcast.xml" | grep -qF "/releases/download/v$version/" || published=false
+          done
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null && [ "$published" = true ]; then
             echo "v$version is already released; nothing to do."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
@@ -166,13 +173,22 @@ jobs:
           rm -f "$RELEASE_SECRETS/AuthKey.p8"
           echo "SOFATAP_SPARKLE_KEY_FILE=$RELEASE_SECRETS/sparkle.key" >> "$GITHUB_ENV"
 
-      - name: Next Sparkle build number
+      - name: Latest published feeds and the next Sparkle build number
         run: |
-          build=$(python3 - <<'PY'
-          import xml.etree.ElementTree as ET
+          # The source stays at the triggering commit, but the feeds come from main now: an earlier release may
+          # have committed newer feeds after this run started (runs of this workflow are serialized).
+          feeds="$RUNNER_TEMP/published-feeds"
+          git fetch -q --depth=1 origin main
+          for arch in arm64 x64; do
+            mkdir -p "$feeds/$arch"
+            git show "FETCH_HEAD:updates/macos/$arch/appcast.xml" > "$feeds/$arch/appcast.xml"
+          done
+          echo "PUBLISHED_FEEDS=$feeds" >> "$GITHUB_ENV"
+          build=$(FEEDS="$feeds" python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
           tag = "{http://www.andymatuschak.org/xml-namespaces/sparkle}version"
           builds = [int(e.text) for arch in ("arm64", "x64")
-                    for e in ET.parse(f"updates/macos/{arch}/appcast.xml").iter(tag) if e.text and e.text.isdigit()]
+                    for e in ET.parse(f"{os.environ['FEEDS']}/{arch}/appcast.xml").iter(tag) if e.text and e.text.isdigit()]
           print(max(builds, default=0) + 1)
           PY
           )
@@ -194,7 +210,7 @@ jobs:
             python3 scripts/macos/generate-appcast.py --architecture "$arch" --tag "v$VERSION" \
               --archive "artifacts/notarization/$arch/SofaTap-macOS-$arch-notarized.zip" \
               --receipt "artifacts/notarization/$arch/NOTARIZATION-RECEIPT.json" \
-              --previous-feed "updates/macos/$arch/appcast.xml" \
+              --previous-feed "$PUBLISHED_FEEDS/$arch/appcast.xml" \
               --output-dir "artifacts/appcast/$arch"
             mkdir -p artifacts/mac-release/feeds/$arch
             cp "artifacts/notarization/$arch/SofaTap-macOS-$arch-notarized.zip" artifacts/mac-release/
@@ -265,8 +281,15 @@ jobs:
           fi
           prerelease=""; case "$VERSION" in *-*) prerelease="--prerelease";; esac
           cd "$RUNNER_TEMP/release"
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft $prerelease \
-            --title "Sofatap desktop $VERSION" --notes-file "$notes" ./*
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Resuming an interrupted release: its feeds never reached main, so replace the files with this
+            # run's (the new feeds sign these exact Mac archives).
+            echo "Release v$VERSION exists without published feeds; replacing its files."
+            gh release upload "v$VERSION" --repo "$GITHUB_REPOSITORY" --clobber ./*
+          else
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft $prerelease \
+              --title "Sofatap desktop $VERSION" --notes-file "$notes" ./*
+          fi
           gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
 
       - name: Check the public downloads
