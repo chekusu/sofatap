@@ -42,6 +42,25 @@ public class OnboardingFlowTest {
         assertTrue(flow.onboarded());
     }
 
+    @Test public void losingPhoneDuringEitherPairingAnimationReturnsToPairing() {
+        for (boolean reachedConnected : new boolean[] { false, true }) {
+            for (boolean qrAvailable : new boolean[] { false, true }) {
+                OnboardingFlow flow = new OnboardingFlow(false);
+                flow.update(in(true, false, false), 0);
+                flow.update(in(false, true, false), 1);
+                long now = 1;
+                if (reachedConnected) {
+                    now += OnboardingFlow.LINKING_MS;
+                    flow.update(in(false, true, false), now);
+                    assertEquals(Stage.CONNECTED, flow.stage());
+                }
+                flow.update(in(qrAvailable, false, false), now + 1);
+                assertEquals(qrAvailable ? Stage.READY : Stage.IDLE, flow.stage());
+                assertFalse(flow.onboarded());
+            }
+        }
+    }
+
     @Test public void laterSkipsPermissionUntilAfterPairing() {
         OnboardingFlow flow = new OnboardingFlow(false);
         flow.update(in(true, false, true), 0);

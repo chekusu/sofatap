@@ -59,8 +59,10 @@ public final class OnboardingFlow {
                 if (in.needsPermission && !permissionDeferred && !onboarded) return Stage.PERMISSION;
                 return in.qrAvailable ? Stage.READY : Stage.IDLE;
             case LINKING:
+                if (!in.connected) return lostPhone(in);
                 return age >= LINKING_MS ? Stage.CONNECTED : Stage.LINKING;
             case CONNECTED:
+                if (!in.connected) return lostPhone(in);
                 if (age < CONNECTED_MS) return Stage.CONNECTED;
                 if (in.needsPermission) return permissionDeferred ? Stage.IDLE : Stage.PERMISSION;
                 return onboarded ? Stage.IDLE : Stage.GUIDE_MOVE;
