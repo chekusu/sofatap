@@ -1,9 +1,10 @@
 name: Desktop receiver release
 
 # A desktop version bump merged to main is a release. When updates/desktop-version.txt names a version that has no
-# v<version> tag yet, this builds Windows and Linux on Ubuntu and both Mac architectures on a Hayabuild Mac
-# (Developer ID signing, Apple notarization, signed Sparkle feeds), publishes the GitHub release v<version>,
-# checks the public downloads, and only then commits the signed Mac feeds to main so installed receivers update.
+# v<version> tag yet, this builds Windows and Linux on a Hayabuild Linux runner and both Mac architectures on a
+# Hayabuild Mac (Developer ID signing, Apple notarization, signed Sparkle feeds), publishes the GitHub release
+# v<version>, checks the public downloads, and only then commits the signed Mac feeds to main so installed receivers
+# update.
 #
 # No GitHub Actions secrets. The Mac job takes its signing material from Hayabuild's secret store through GitHub
 # OIDC, kept for this repository, refs/heads/main and .github/workflows/desktop-release.yml:
@@ -35,7 +36,7 @@ env:
 jobs:
   plan:
     name: Version and tag
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     outputs:
       version: ${{ steps.plan.outputs.version }}
       release: ${{ steps.plan.outputs.release }}
@@ -66,11 +67,14 @@ jobs:
     name: Windows and Linux packages
     needs: plan
     if: needs.plan.outputs.release == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          # The Linux default, /usr/share/dotnet, is read-only on self-hosted runners.
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           dotnet-version: '10.0.x'
       - name: Build Windows x64 and Linux x64/arm64
@@ -87,6 +91,7 @@ jobs:
             artifacts/SofaTap-Linux-x64.tar.gz
             artifacts/SofaTap-Linux-arm64.tar.gz
           if-no-files-found: error
+          retention-days: 1
 
   mac:
     name: Mac · sign, notarize and Sparkle feeds
@@ -224,6 +229,7 @@ jobs:
           name: desktop-mac
           path: artifacts/mac-release/
           if-no-files-found: error
+          retention-days: 1
 
       - name: Remove signing material
         if: always()
@@ -239,7 +245,7 @@ jobs:
   publish:
     name: Publish v${{ needs.plan.outputs.version }}
     needs: [plan, portable, mac]
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 30
     permissions:
       contents: write

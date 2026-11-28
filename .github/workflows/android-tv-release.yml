@@ -30,7 +30,7 @@ env:
 jobs:
   release:
     name: Build, check and publish
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 30
     permissions:
       contents: write
@@ -70,14 +70,28 @@ jobs:
           set -euo pipefail
           [ -n "${ANDROID_TV_DEBUG_KEYSTORE:-}" ] || { echo "::error::Hayabuild gave no ANDROID_TV_DEBUG_KEYSTORE (kept for refs/heads/main and android-tv-release.yml)"; exit 1; }
           # The Android Gradle plugin signs debug builds with <ANDROID_USER_HOME or ~/.android>/debug.keystore.
-          keystore="${ANDROID_USER_HOME:-$HOME/.android}/debug.keystore"
+          # A self-hosted runner keeps its home between jobs (and other jobs' debug builds leave a keystore in
+          # ~/.android), so this job uses an Android user home of its own in its temporary folder.
+          export ANDROID_USER_HOME="$RUNNER_TEMP/android-user-home"
+          echo "ANDROID_USER_HOME=$ANDROID_USER_HOME" >> "$GITHUB_ENV"
+          keystore="$ANDROID_USER_HOME/debug.keystore"
           mkdir -p "$(dirname "$keystore")"
           [ ! -e "$keystore" ] || { echo "::error::The runner already has a debug keystore"; exit 1; }
           umask 077
           printf '%s' "$ANDROID_TV_DEBUG_KEYSTORE" | base64 --decode > "$keystore"
           echo "TV_KEYSTORE=$keystore" >> "$GITHUB_ENV"
 
-      - name: Select JDK 17 and verify the runner Android SDK
+      # The self-hosted Linux runners have no preinstalled JDK or Android SDK (GitHub's Ubuntu images do).
+      - if: steps.plan.outputs.release == 'true'
+        uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install the Android SDK
+        if: steps.plan.outputs.release == 'true'
+        run: bash .github/scripts/install-android-sdk.sh
+
+      - name: Select JDK 17 and verify the Android SDK
         if: steps.plan.outputs.release == 'true'
         run: |
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"

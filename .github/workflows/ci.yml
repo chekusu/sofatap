@@ -175,6 +175,7 @@ jobs:
           name: mint-calm-macos
           path: artifacts/mint-calm/macos-*.png
           if-no-files-found: error
+          retention-days: 1
       - name: Windows native-window protocol and owned-process checks without launching a UI
         run: dotnet run --project desktop/windows/tests/ProtocolChecks.csproj -c Release
       - name: Compile unprovisioned iPhone app without installation
@@ -191,6 +192,7 @@ jobs:
 
   windows-host:
     name: Windows · host checks and self-contained build
+    # Stays on GitHub's hosted Windows runner: there is no self-hosted Windows runner.
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
@@ -244,14 +246,18 @@ jobs:
           name: mint-calm-windows
           path: artifacts/mint-calm/windows-*.png
           if-no-files-found: error
+          retention-days: 1
 
   linux-native-protocol:
     name: Linux · native GTK, X11 input and isolated portal protocol
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        env:
+          # The Linux default, /usr/share/dotnet, is read-only on self-hosted runners.
+          DOTNET_INSTALL_DIR: ${{ runner.tool_cache }}/dotnet
         with:
           dotnet-version: '10.0.x'
       - name: Install isolated graphical test dependencies
@@ -288,14 +294,22 @@ jobs:
           name: mint-calm-linux
           path: artifacts/mint-calm/linux-*.png
           if-no-files-found: error
+          retention-days: 1
 
   android-controller:
     name: Android phone · controller, protocol and APK
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Select JDK 17 and verify the runner Android SDK
+      # The self-hosted Linux runners have no preinstalled JDK or Android SDK (GitHub's Ubuntu images do).
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install the Android SDK
+        run: bash .github/scripts/install-android-sdk.sh
+      - name: Select JDK 17 and verify the Android SDK
         run: |
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
@@ -316,14 +330,22 @@ jobs:
             android/controller/build/reports/tests/testDebugUnitTest/
             android/controller/build/reports/lint-results-debug.html
           if-no-files-found: error
+          retention-days: 1
 
   android-tv:
     name: Android TV · native receiver, protocol and APK
-    runs-on: ubuntu-24.04
+    runs-on: hayabuild-linux
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Select JDK 17 and verify the runner Android SDK
+      # The self-hosted Linux runners have no preinstalled JDK or Android SDK (GitHub's Ubuntu images do).
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install the Android SDK
+        run: bash .github/scripts/install-android-sdk.sh
+      - name: Select JDK 17 and verify the Android SDK
         run: |
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
@@ -342,3 +364,4 @@ jobs:
             android/receiver/build/reports/tests/testDebugUnitTest/
             android/receiver/build/reports/lint-results-debug.html
           if-no-files-found: error
+          retention-days: 1

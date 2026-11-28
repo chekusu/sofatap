@@ -124,6 +124,7 @@ jobs:
           name: sofatap-ios-${{ steps.version.outputs.version }}-${{ steps.version.outputs.build }}
           path: ${{ runner.temp }}/export/
           if-no-files-found: error
+          retention-days: 1
 
       - name: Write metadata and attach the processed build
         if: inputs.mode != 'check'
