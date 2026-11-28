@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 @main
@@ -10,12 +11,51 @@ struct SofaTapApp: App {
             RemoteView(model: controller)
                 .preferredColorScheme(.dark)
                 .tint(Palette.mint)
+                .modifier(ReviewPromptHost(model: controller))
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active { controller.becameActive() }
                     else if phase == .background { controller.becameInactive() }
                     else { controller.pauseInput() }
                 }
         }
+    }
+}
+
+/// Tracks real computer sessions and asks iOS for the rating prompt only when
+/// the app returns to the foreground with no session running, so it never
+/// interrupts someone using the remote. See ReviewPromptPolicy.
+private struct ReviewPromptHost: ViewModifier {
+    @ObservedObject var model: ControllerModel
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.requestReview) private var requestReview
+    @State private var sessionStart: Date?
+    private let policy = ReviewPromptPolicy()
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { policy.noteLaunch(now: Date()) }
+            .onChange(of: model.connected && model.inputAvailable) { _, usable in
+                if usable && !model.demo { sessionStart = sessionStart ?? Date() }
+                else { endSession() }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { endSession() }
+                else if phase == .active { consider() }
+            }
+    }
+
+    private func endSession() {
+        guard let start = sessionStart else { return }
+        sessionStart = nil
+        policy.recordSession(start: start, end: Date())
+    }
+
+    private func consider() {
+        guard !model.demo, sessionStart == nil, !model.connected else { return }
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        guard policy.shouldRequest(now: Date(), version: version) else { return }
+        policy.markRequested(version: version)
+        requestReview()
     }
 }
 

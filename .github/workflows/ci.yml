@@ -84,6 +84,11 @@ jobs:
         run: bash ios/scripts/test-pairing-code.sh
       - name: Pairing cancellation, retry and duplicate bootstrap checks
         run: bash ios/scripts/test-pairing-attempt.sh
+      - name: Rating prompt timing without StoreKit
+        shell: bash
+        run: |
+          swiftc ios/SofaTap/Core/ReviewPromptPolicy.swift tests/ReviewPromptPolicyTests.swift -o "$RUNNER_TEMP/sofatap-review-prompt-tests"
+          "$RUNNER_TEMP/sofatap-review-prompt-tests"
       - name: Native interface and permission localization coverage
         run: python3 ios/scripts/check-localizations.py
       - name: Receiver platform and permission-state checks
