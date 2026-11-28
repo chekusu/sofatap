@@ -14,6 +14,7 @@
 		14781C4CA2D4BF8AA1B01BFC /* AndroidTVController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51766130EE2B9540E1118AD5 /* AndroidTVController.swift */; };
 		235031F88751C7AF87089F98 /* ControllerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3175A3377E3E1F6F1FD381 /* ControllerModel.swift */; };
 		236D7795AA6EDE0FC0192473 /* PointerTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A4540689F5AEF8C5E7E7475 /* PointerTiming.swift */; };
+		5A1E7C0D2B9F4E61A0C3D8F1 /* ReviewPromptPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1E7C0D2B9F4E61A0C3D8F2 /* ReviewPromptPolicy.swift */; };
 		24B7504D534E738295974142 /* AndroidTVControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25BF159DE748CFC489FA86F2 /* AndroidTVControls.swift */; };
 		282012F3931864B44AE6BDED /* UnlockCredentialVault.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B97D575181E25F83B3EFBFD /* UnlockCredentialVault.swift */; };
 		2CA8D98DD58E0E28DC36DD7A /* TouchGestureState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 895EB1B944638483C701ADDC /* TouchGestureState.swift */; };
@@ -63,6 +64,7 @@
 		0CD153A949AB5AE1D0EF3CC3 /* GestureConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureConfiguration.swift; sourceTree = "<group>"; };
 		0FC98CB31D572AB388B6B719 /* SofaTap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SofaTap.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A4540689F5AEF8C5E7E7475 /* PointerTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PointerTiming.swift; sourceTree = "<group>"; };
+		5A1E7C0D2B9F4E61A0C3D8F2 /* ReviewPromptPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReviewPromptPolicy.swift; sourceTree = "<group>"; };
 		1B97D575181E25F83B3EFBFD /* UnlockCredentialVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockCredentialVault.swift; sourceTree = "<group>"; };
 		1CFE8991201D1F2D103B6851 /* SpeechDictationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechDictationController.swift; sourceTree = "<group>"; };
 		20F1B0BF662710D27BF406A2 /* GestureLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GestureLabels.swift; sourceTree = "<group>"; };
@@ -147,6 +149,7 @@
 				9BA691589E2CFD49ECBD6683 /* PeerTLSBridge.swift */,
 				3B025E89091221B07940DE33 /* PeerTransportDiscovery.swift */,
 				1A4540689F5AEF8C5E7E7475 /* PointerTiming.swift */,
+				5A1E7C0D2B9F4E61A0C3D8F2 /* ReviewPromptPolicy.swift */,
 				8836BE62D39309B8AF525D9F /* ReceiverState.swift */,
 				8E456A2636B418FE1F7D1358 /* SavedDevice.swift */,
 				1CFE8991201D1F2D103B6851 /* SpeechDictationController.swift */,
@@ -340,6 +343,7 @@
 				AA37B03A8B49F6EEE62ADC1E /* PeerTLSBridge.swift in Sources */,
 				0BE3084A48A20D1B2A26FF38 /* PeerTransportDiscovery.swift in Sources */,
 				236D7795AA6EDE0FC0192473 /* PointerTiming.swift in Sources */,
+				5A1E7C0D2B9F4E61A0C3D8F1 /* ReviewPromptPolicy.swift in Sources */,
 				DB24AEDE5DA4BDD2DDD5E78B /* ReceiverState.swift in Sources */,
 				E535D68E8BB20BB759348ADE /* RemoteGuideView.swift in Sources */,
 				84254EA55A038C626D1DFC9A /* RemoteView.swift in Sources */,
